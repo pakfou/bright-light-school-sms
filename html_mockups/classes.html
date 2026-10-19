@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="km">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>គ្រប់គ្រងថ្នាក់រៀន - Class Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style> body { font-family: 'Kantumruy Pro', sans-serif; } .modal { transition: opacity 0.25s ease; } body.modal-active { overflow: hidden; } </style>
+</head>
+<body class="bg-slate-100 text-slate-800 flex h-screen overflow-hidden">
+
+    <!-- SIDEBAR NAVIGATION -->
+    <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col justify-between hidden md:flex shadow-xl">
+        <div>
+            <!-- Logo Brand -->
+            <div class="h-16 flex items-center px-6 bg-slate-950 text-white font-bold text-xl tracking-wide">
+                <i class="fa-solid fa-graduation-cap text-blue-500 mr-3 text-2xl"></i> SchoolMS Pro
+            </div>
+            
+            <!-- Menu Links -->
+            <nav class="p-4 space-y-1.5 text-sm font-medium">
+                <a href="index.html" class="flex items-center px-4 py-3 rounded-xl hover:bg-slate-800 hover:text-white transition">
+                    <i class="fa-solid fa-chart-pie w-6"></i> ផ្ទាំងគ្រប់គ្រងទូទៅ
+                </a>
+                <a href="attendance.html" class="flex items-center px-4 py-3 rounded-xl hover:bg-slate-800 hover:text-white transition">
+                    <i class="fa-solid fa-qrcode w-6 text-emerald-400"></i> ស្កេនវត្តមាន
+                </a>
+                <a href="students.html" class="flex items-center px-4 py-3 rounded-xl hover:bg-slate-800 hover:text-white transition">
+                    <i class="fa-solid fa-user-graduate w-6 text-blue-400"></i> គ្រប់គ្រងសិស្ស
+                </a>
+                <a href="teachers.html" class="flex items-center px-4 py-3 rounded-xl hover:bg-slate-800 hover:text-white transition">
+                    <i class="fa-solid fa-chalkboard-user w-6 text-amber-400"></i> គ្រប់គ្រងគ្រូ
+                </a>
+                <a href="classes.html" class="flex items-center px-4 py-3 rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-600/30 transition">
+                    <i class="fa-solid fa-school w-6 text-white"></i> គ្រប់គ្រងថ្នាក់រៀន
+                </a>
+                <a href="id-cards.html" class="flex items-center px-4 py-3 rounded-xl hover:bg-slate-800 hover:text-white transition">
+                    <i class="fa-solid fa-id-card w-6 text-pink-400"></i> បង្កើតកាតសម្គាល់ខ្លួន
+                </a>
+                <a href="schedule.html" class="flex items-center px-4 py-3 rounded-xl hover:bg-slate-800 hover:text-white transition">
+                    <i class="fa-solid fa-calendar-days w-6 text-cyan-400"></i> កាលវិភាគប្រចាំសប្តាហ៍
+                </a>
+                <a href="grades.html" class="flex items-center px-4 py-3 rounded-xl hover:bg-slate-800 hover:text-white transition">
+                    <i class="fa-solid fa-file-lines w-6 text-purple-400"></i> បញ្ចូលពិន្ទុ
+                </a>
+                <a href="finance.html" class="flex items-center px-4 py-3 rounded-xl hover:bg-slate-800 hover:text-white transition">
+                    <i class="fa-solid fa-wallet w-6 text-green-400"></i> ហិរញ្ញវត្ថុ
+                </a>
+                <a href="ai-assistant.html" class="flex items-center px-4 py-3 rounded-xl hover:bg-slate-800 hover:text-white transition">
+                    <i class="fa-solid fa-robot w-6 text-rose-400"></i> ជំនួយការ AI
+                </a>
+                <a href="reports.html" class="flex items-center px-4 py-3 rounded-xl hover:bg-slate-800 hover:text-white transition">
+                    <i class="fa-solid fa-chart-line w-6 text-yellow-400"></i> របាយការណ៍បិទបញ្ជី
+                </a>
+            </nav>
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT AREA -->
+    <div class="flex-1 flex flex-col h-screen overflow-hidden">
+        <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm">
+            <h2 class="text-xl font-bold text-slate-800">គ្រប់គ្រងថ្នាក់រៀន (Classrooms)</h2>
+            <div class="flex items-center space-x-4">
+                <button onclick="openModal()" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl shadow-lg shadow-blue-600/20 transition flex items-center">
+                    <i class="fa-solid fa-plus mr-2"></i> បង្កើតថ្នាក់ថ្មី
+                </button>
+            </div>
+        </header>
+
+        <main class="flex-1 overflow-y-auto p-8">
+            <!-- Filter & Search -->
+            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm mb-6 flex flex-col md:flex-row gap-4 items-center justify-between">
+                <div class="relative w-full md:w-96">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400"><i class="fa-solid fa-search"></i></span>
+                    <input type="text" id="search-input" onkeyup="filterClasses()" placeholder="ស្វែងរកឈ្មោះថ្នាក់..." class="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+                </div>
+            </div>
+
+            <!-- Classes Grid -->
+            <div id="class-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div class="col-span-full text-center py-10 text-slate-500"><i class="fa-solid fa-spinner fa-spin text-3xl text-blue-500 mb-3"></i><br>កំពុងទាញយកទិន្នន័យ...</div>
+            </div>
+        </main>
+    </div>
+
+    <!-- ADD/EDIT MODAL -->
+    <div id="class-modal" class="modal opacity-0 pointer-events-none fixed w-full h-full top-0 left-0 flex items-center justify-center z-50">
+        <div class="modal-overlay absolute w-full h-full bg-slate-900 opacity-50" onclick="closeModal()"></div>
+        <div class="modal-container bg-white w-11/12 md:max-w-lg mx-auto rounded-2xl shadow-xl z-50 overflow-y-auto">
+            <div class="modal-content py-6 px-6">
+                <div class="flex justify-between items-center pb-4 border-b border-slate-100 mb-5">
+                    <p class="text-xl font-bold text-slate-800" id="modal-title">បង្កើតថ្នាក់ថ្មី</p>
+                    <div class="cursor-pointer hover:bg-slate-100 p-2 rounded-lg" onclick="closeModal()"><i class="fa-solid fa-xmark text-slate-500"></i></div>
+                </div>
+                <form id="class-form" class="space-y-4">
+                    <input type="hidden" id="class-id" value="">
+                    
+                    <div><label class="block text-sm mb-1 text-slate-700">ឈ្មោះថ្នាក់ *</label><input type="text" id="c-name" required class="w-full px-4 py-2 bg-slate-50 border rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="ឧ. Grade 10A"></div>
+                    
+                    <div>
+                        <label class="block text-sm mb-1 text-slate-700">កម្រិតសិក្សា</label>
+                        <select id="c-level" class="w-full px-4 py-2 bg-slate-50 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <option value="Full-Time">ចំណេះទូទៅ (Full-Time)</option>
+                            <option value="Part-Time">ក្រៅម៉ោង (Part-Time)</option>
+                            <option value="Short-Course">វគ្គខ្លី (Short-Course)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm mb-1 text-slate-700">វេនសិក្សា</label>
+                        <select id="c-shift" class="w-full px-4 py-2 bg-slate-50 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <option value="Morning">ព្រឹក (Morning)</option>
+                            <option value="Afternoon">រសៀល (Afternoon)</option>
+                            <option value="Evening">យប់ (Evening)</option>
+                            <option value="Weekend">ចុងសប្តាហ៍ (Weekend)</option>
+                        </select>
+                    </div>
+
+                    <div><label class="block text-sm mb-1 text-slate-700">មុខវិជ្ជា/ជំនាញ</label><input type="text" id="c-subject" class="w-full px-4 py-2 bg-slate-50 border rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="ទូទៅ" value="ទូទៅ"></div>
+                    
+                    <div class="flex justify-end pt-4 mt-6 border-t border-slate-100 gap-3">
+                        <button type="button" onclick="closeModal()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 rounded-xl transition">បោះបង់</button>
+                        <button type="submit" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg transition">រក្សាទុក</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5000/api/classrooms';
+        let classes = [];
+
+        async function fetchClasses() {
+            try {
+                const res = await fetch(API_URL);
+                const data = await res.json();
+                if(data.success) {
+                    classes = data.data;
+                    renderClasses(classes);
+                }
+            } catch(e) {
+                console.error(e);
+                document.getElementById('class-list').innerHTML = `<div class="col-span-full text-center text-red-500 py-10">បញ្ហាតភ្ជាប់បណ្ដាញ (Network Error)</div>`;
+            }
+        }
+
+        function renderClasses(list) {
+            const container = document.getElementById('class-list');
+            if(list.length === 0) {
+                container.innerHTML = `<div class="col-span-full text-center py-10 text-slate-500 bg-white rounded-2xl border">មិនទាន់មានថ្នាក់រៀនទេ</div>`;
+                return;
+            }
+            container.innerHTML = list.map(c => `
+                <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xl"><i class="fa-solid fa-chalkboard"></i></div>
+                        <div class="flex gap-2">
+                            <button onclick="editClass(${c.id})" class="text-slate-400 hover:text-amber-500 transition"><i class="fa-solid fa-pen"></i></button>
+                            <button onclick="deleteClass(${c.id})" class="text-slate-400 hover:text-rose-500 transition"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-800 mb-1">${c.class_name}</h3>
+                    <div class="space-y-1 mt-3">
+                        <p class="text-sm text-slate-500"><i class="fa-solid fa-layer-group w-5 text-slate-400"></i> ${c.level_type || 'Full-Time'}</p>
+                        <p class="text-sm text-slate-500"><i class="fa-solid fa-clock w-5 text-slate-400"></i> ${c.shift === 'Morning' ? 'វេនព្រឹក' : c.shift === 'Afternoon' ? 'វេនរសៀល' : c.shift === 'Evening' ? 'វេនយប់' : 'ចុងសប្តាហ៍'}</p>
+                        <p class="text-sm text-slate-500"><i class="fa-solid fa-book w-5 text-slate-400"></i> ${c.subject || 'ទូទៅ'}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function filterClasses() {
+            const query = document.getElementById('search-input').value.toLowerCase();
+            const filtered = classes.filter(c => c.class_name.toLowerCase().includes(query));
+            renderClasses(filtered);
+        }
+
+        function openModal(isEdit = false) {
+            document.getElementById('class-modal').classList.remove('opacity-0', 'pointer-events-none');
+            document.body.classList.add('modal-active');
+            if(!isEdit) {
+                document.getElementById('modal-title').innerText = "បង្កើតថ្នាក់ថ្មី";
+                document.getElementById('class-form').reset();
+                document.getElementById('class-id').value = '';
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('class-modal').classList.add('opacity-0', 'pointer-events-none');
+            document.body.classList.remove('modal-active');
+        }
+
+        function editClass(id) {
+            const c = classes.find(x => x.id === id);
+            if(!c) return;
+            document.getElementById('modal-title').innerText = "កែប្រែថ្នាក់រៀន";
+            document.getElementById('class-id').value = c.id;
+            document.getElementById('c-name').value = c.class_name || '';
+            document.getElementById('c-level').value = c.level_type || 'Full-Time';
+            document.getElementById('c-shift').value = c.shift || 'Morning';
+            document.getElementById('c-subject').value = c.subject || 'ទូទៅ';
+            openModal(true);
+        }
+
+        async function deleteClass(id) {
+            if(!confirm("តើអ្នកចង់លុបថ្នាក់នេះមែនទេ? (សិស្សក្នុងថ្នាក់នេះនឹងបាត់បង់ ID ថ្នាក់)")) return;
+            await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+            fetchClasses();
+        }
+
+        document.getElementById('class-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('class-id').value;
+            const data = {
+                class_name: document.getElementById('c-name').value,
+                level_type: document.getElementById('c-level').value,
+                shift: document.getElementById('c-shift').value,
+                subject: document.getElementById('c-subject').value
+            };
+            
+            const method = id ? 'PUT' : 'POST';
+            const url = id ? `${API_URL}/${id}` : API_URL;
+            
+            await fetch(url, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            closeModal();
+            fetchClasses();
+        });
+
+        document.addEventListener('DOMContentLoaded', fetchClasses);
+    </script>
+</body>
+</html>

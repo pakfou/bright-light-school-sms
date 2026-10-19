@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "*.sql": "mysql"
+    },
+    "cmake.sourceDirectory": "D:/Downloads/Telegram Desktop/first_express/school_management_app/linux/flutter"
+}

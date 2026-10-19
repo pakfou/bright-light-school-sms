@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="km">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teachers - Studies Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        brand: {
+                            bg: '#0B0F19', // Darkest blue background
+                            sidebar: '#111827', // Sidebar color
+                            card: '#151E32', // Card background
+                            cardHover: '#1E293B',
+                            primary: '#3B82F6', // Blue buttons
+                            textMain: '#F8FAFC',
+                            textMuted: '#94A3B8'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #0B0F19; color: #F8FAFC; }
+        .glass-card {
+            background: linear-gradient(145deg, #151E32 0%, #0F172A 100%);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
+        }
+        .sidebar-item { border-left: 3px solid transparent; }
+        .sidebar-item:hover, .sidebar-item.active {
+            background: rgba(59, 130, 246, 0.1);
+            color: #60A5FA;
+            border-left-color: #3B82F6;
+        }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden text-sm">
+
+    <!-- SIDEBAR -->
+    <aside class="w-64 bg-brand-sidebar border-r border-slate-800 flex flex-col h-full overflow-y-auto hidden md:flex">
+        <!-- Logo -->
+        <div class="h-16 flex items-center px-6 border-b border-slate-800">
+            <i class="fa-solid fa-bars text-slate-400 mr-4 cursor-pointer"></i>
+            <span class="font-bold text-lg tracking-wide text-white">Studies</span>
+        </div>
+        
+        <!-- Menu -->
+        <nav class="flex-1 py-4 space-y-1">
+            <a href="#" class="sidebar-item flex items-center px-6 py-2.5 text-brand-textMuted transition">
+                <i class="fa-solid fa-chart-pie w-6"></i> Reports
+            </a>
+            <a href="#" class="sidebar-item flex items-center px-6 py-2.5 text-brand-textMuted transition">
+                <i class="fa-solid fa-file-lines w-6"></i> Notes
+            </a>
+            <a href="#" class="sidebar-item flex items-center px-6 py-2.5 text-brand-textMuted transition">
+                <i class="fa-solid fa-trophy w-6"></i> Leaderboard
+            </a>
+            <a href="#" class="sidebar-item flex items-center px-6 py-2.5 text-brand-textMuted transition">
+                <i class="fa-solid fa-graduation-cap w-6"></i> Trainings
+            </a>
+            
+            <div class="px-6 py-2 mt-2">
+                <p class="text-xs font-semibold text-slate-500 uppercase">Users</p>
+            </div>
+            <a href="#" class="sidebar-item flex items-center px-6 py-2.5 text-brand-textMuted transition">
+                <i class="fa-solid fa-user-graduate w-6"></i> Students
+            </a>
+            <a href="#" class="sidebar-item active flex items-center px-6 py-2.5 transition">
+                <i class="fa-solid fa-chalkboard-user w-6"></i> Teachers
+            </a>
+            <a href="#" class="sidebar-item flex items-center px-6 py-2.5 text-brand-textMuted transition">
+                <i class="fa-solid fa-users w-6"></i> All Users
+            </a>
+        </nav>
+        
+        <div class="p-4 border-t border-slate-800">
+            <a href="#" class="flex items-center px-2 py-2 text-rose-400 hover:text-rose-300 transition">
+                <i class="fa-solid fa-arrow-right-from-bracket w-6"></i> Logout
+            </a>
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <div class="flex-1 flex flex-col h-full overflow-hidden">
+        
+        <!-- TOP NAVBAR -->
+        <header class="h-16 border-b border-slate-800 flex items-center justify-between px-8 bg-brand-sidebar/50 backdrop-blur-sm">
+            <div class="flex items-center space-x-3">
+                <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center"><i class="fa-solid fa-chalkboard-user text-white"></i></div>
+                <div>
+                    <h2 class="text-lg font-bold text-white leading-tight">Teachers</h2>
+                    <p class="text-xs text-brand-textMuted" id="teacher-count">Loading...</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <button class="bg-slate-800 text-white px-4 py-2 rounded-lg border border-slate-700 hover:bg-slate-700 transition flex items-center text-xs">
+                    <i class="fa-solid fa-globe mr-2"></i> العربية
+                </button>
+                <button class="bg-brand-primary hover:bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg shadow-blue-500/20 transition flex items-center font-medium">
+                    <i class="fa-solid fa-plus mr-2"></i> Add Teacher
+                </button>
+            </div>
+        </header>
+
+        <!-- BODY -->
+        <main class="flex-1 overflow-y-auto p-8">
+            
+            <!-- Search Bar -->
+            <div class="relative w-full max-w-md mb-8">
+                <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-slate-500"><i class="fa-solid fa-search"></i></span>
+                <input type="text" id="search-input" placeholder="Search by name or Teacher ID..." class="w-full pl-11 pr-4 py-3 bg-brand-sidebar border border-slate-700 rounded-xl focus:outline-none focus:border-brand-primary text-white text-sm transition shadow-inner">
+            </div>
+
+            <!-- Grid Container -->
+            <div id="teacher-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Data will be loaded here via JS -->
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Floating Chat Icon -->
+    <div class="fixed bottom-6 right-6 w-14 h-14 bg-brand-primary rounded-full shadow-lg shadow-blue-500/40 flex items-center justify-center cursor-pointer hover:scale-105 transition transform z-50">
+        <i class="fa-solid fa-comment-dots text-white text-xl"></i>
+        <span class="absolute top-0 right-0 w-3.5 h-3.5 bg-emerald-400 border-2 border-brand-bg rounded-full"></span>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5000/api/teachers';
+
+        async function fetchTeachers() {
+            try {
+                const response = await fetch(API_URL);
+                const result = await response.json();
+                if (result.success) {
+                    document.getElementById('teacher-count').innerText = `${result.data.length} teachers`;
+                    renderTeachers(result.data);
+                }
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                document.getElementById('teacher-grid').innerHTML = `<p class="text-rose-400">Failed to load data.</p>`;
+            }
+        }
+
+        function renderTeachers(teachers) {
+            const grid = document.getElementById('teacher-grid');
+            grid.innerHTML = '';
+
+            teachers.forEach((t, index) => {
+                const initial = (t.name_kh || t.name_en || 'T').charAt(0).toUpperCase();
+                const photoHtml = t.photo_url 
+                    ? `<img src="${t.photo_url}" class="w-16 h-16 rounded-full object-cover border-2 border-slate-700 p-1">`
+                    : `<div class="w-16 h-16 rounded-full bg-slate-800 border-2 border-slate-700 p-1 flex items-center justify-center text-xl font-bold text-slate-400">${initial}</div>`;
+                
+                const card = `
+                <div class="glass-card rounded-2xl p-6 flex flex-col items-center relative group hover:border-slate-600 transition duration-300">
+                    <!-- Actions -->
+                    <div class="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition flex space-x-2">
+                        <button class="w-8 h-8 bg-slate-800 rounded-lg text-slate-400 hover:text-white transition"><i class="fa-solid fa-pen"></i></button>
+                    </div>
+
+                    <!-- Profile -->
+                    <div class="mb-4 relative">
+                        ${photoHtml}
+                    </div>
+                    <h3 class="text-white font-bold text-lg mb-2">${t.name_kh}</h3>
+                    
+                    <!-- Badges -->
+                    <div class="flex items-center space-x-2 mb-4">
+                        <span class="px-2.5 py-1 bg-slate-800 text-brand-primary text-xs font-bold rounded-md"># ${t.teacher_code || (index+1)}</span>
+                        <span class="px-2.5 py-1 bg-emerald-900/40 text-emerald-400 border border-emerald-800 text-xs font-medium rounded-md"><i class="fa-solid fa-laptop-code mr-1"></i> ${t.subject || 'General'}</span>
+                    </div>
+                    <p class="text-xs text-brand-textMuted mb-6">@${t.email ? t.email.split('@')[0] : 'teacher'}</p>
+                    
+                    <!-- Details List -->
+                    <div class="w-full space-y-3 text-xs text-slate-400">
+                        <div class="flex items-center">
+                            <i class="fa-solid fa-envelope w-5 text-brand-primary/80"></i> <span class="truncate">${t.email || 'N/A'}</span>
+                        </div>
+                        <div class="flex items-center">
+                            <i class="fa-solid fa-phone w-5 text-brand-primary/80"></i> <span>${t.phone || 'N/A'}</span>
+                        </div>
+                        <div class="flex items-center">
+                            <i class="fa-solid fa-book w-5 text-brand-primary/80"></i> <span>${t.subject || 'N/A'}</span>
+                        </div>
+                        <div class="flex items-center">
+                            <i class="fa-solid fa-id-card w-5 text-brand-primary/80"></i> <span>Status: ${t.status || 'Active'}</span>
+                        </div>
+                    </div>
+                </div>`;
+                grid.insertAdjacentHTML('beforeend', card);
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', fetchTeachers);
+    </script>
+</body>
+</html>

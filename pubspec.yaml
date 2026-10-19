@@ -1,0 +1,70 @@
+name: school_management_app
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  image_picker: ^1.1.2
+  http: ^1.6.0
+  provider: ^6.1.5+1
+  mobile_scanner: ^7.4.2
+  qr_flutter: ^4.1.0
+  fl_chart: ^1.2.0
+  pdf: any
+  printing: ^5.14.3
+  table_calendar: ^3.2.1
+  google_fonts: ^8.2.1
+  file_picker: ^13.1.0
+  csv: ^8.0.0
+  shared_preferences: ^2.5.5
+  intl: ^0.20.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/google_fonts/Inter-Regular.ttf
+        - asset: assets/google_fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/google_fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/google_fonts/Inter-Bold.ttf
+          weight: 700
+    - family: Outfit
+      fonts:
+        - asset: assets/google_fonts/Outfit-ExtraBold.ttf
+          weight: 800
+    - family: Khmer OS Battambang
+      fonts:
+        - asset: assets/fonts/KhmerOSbattambang.ttf
+        - asset: assets/fonts/KhmerOSbattambang-Bold.ttf
+          weight: 700
+    - family: Khmer OS Muol Light
+      fonts:
+        - asset: assets/fonts/KhmerOSmuollight.ttf
+    - family: Battambang
+      fonts:
+        - asset: assets/fonts/Battambang-Regular.ttf
+        - asset: assets/fonts/Battambang-Bold.ttf
+          weight: 700
+    - family: Moul
+      fonts:
+        - asset: assets/fonts/Moul-Regular.ttf
