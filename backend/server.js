@@ -14,20 +14,24 @@ app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Serve static frontend console files from backend/public
+// Serve server console at /console
+app.get('/console', (req, res) => {
+    const consoleFile = path.join(__dirname, 'public', 'console.html');
+    if (fs.existsSync(consoleFile)) {
+        res.sendFile(consoleFile);
+    } else {
+        res.send('<h1>BLS Enterprise Server Console</h1>');
+    }
+});
+
+// Serve Flutter Web from /app
+app.use('/app', express.static(path.join(__dirname, 'public')));
+app.use('/app', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Serve static assets directly from backend/public (flutter_bootstrap.js, manifest.json, assets, etc.)
 app.use(express.static(path.join(__dirname, 'public')));
-
-// Serve Flutter Web if compiled build/web or public/app exists
-const flutterWebPath = fs.existsSync(path.join(__dirname, '..', 'build', 'web'))
-    ? path.join(__dirname, '..', 'build', 'web')
-    : path.join(__dirname, 'public', 'app');
-
-if (fs.existsSync(flutterWebPath)) {
-    app.use('/app', express.static(flutterWebPath));
-    app.use('/app', (req, res) => {
-        res.sendFile(path.join(flutterWebPath, 'index.html'));
-    });
-}
 
 const dbConfig = {
     host: process.env.DB_HOST || 'localhost',
@@ -2064,6 +2068,17 @@ ${list}
             reply: `សួស្តី! ប្រព័ន្ធ AI ជំនួយការកំពុងដំណើរការជាធម្មតា។ លោកអ្នកអាចសួរសំណួរអំពីទិន្នន័យសាលា របាយការណ៍ហិរញ្ញវត្ថុ និងឯកសាររដ្ឋបាលបានគ្រប់ពេលវេលា!` 
         });
     }
+});
+
+// SPA Fallback for root / and client-side Flutter routing (excluding /api, /health, /console)
+app.use((req, res, next) => {
+    if (req.method === 'GET' && !req.path.startsWith('/api') && !req.path.startsWith('/health') && !req.path.startsWith('/console')) {
+        const flutterIndex = path.join(__dirname, 'public', 'index.html');
+        if (fs.existsSync(flutterIndex)) {
+            return res.sendFile(flutterIndex);
+        }
+    }
+    next();
 });
 
 const PORT = process.env.PORT || 5000;

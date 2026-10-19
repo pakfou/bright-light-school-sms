@@ -1,12 +1,15 @@
+require('dotenv').config({ path: './backend/.env' });
 const mysql = require('mysql2/promise');
 const fs = require('fs');
 
 async function fixDb() {
     const pool = mysql.createPool({
-        host: 'localhost',
-        user: 'root',
-        password: '',
-        database: 'bls_school_db',
+        host: process.env.DB_HOST || 'localhost',
+        user: process.env.DB_USER || 'root',
+        password: process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : '',
+        database: process.env.DB_NAME || 'bls_school_db',
+        port: process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : 3306,
+        ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
         multipleStatements: true
     });
 

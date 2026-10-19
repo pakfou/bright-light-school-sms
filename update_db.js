@@ -1,14 +1,22 @@
+require('dotenv').config({ path: './backend/.env' });
 const mysql = require('mysql2/promise');
 
 async function updateDB() {
     try {
-        const connection = await mysql.createConnection({
-            host: 'localhost',
-            user: 'root',
-            password: '',
-        });
+        const dbName = process.env.DB_NAME || 'bls_school_db';
+        const connConfig = {
+            host: process.env.DB_HOST || 'localhost',
+            user: process.env.DB_USER || 'root',
+            password: process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : '',
+            port: process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : 3306,
+        };
+        if (process.env.DB_SSL === 'true') {
+            connConfig.ssl = { rejectUnauthorized: false };
+        }
 
-        await connection.query('USE bls_school_db;');
+        const connection = await mysql.createConnection(connConfig);
+        await connection.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\`;`);
+        await connection.query(`USE \`${dbName}\`;`);
 
         const queries = [
             "ALTER TABLE users ADD COLUMN username VARCHAR(100) NULL AFTER name;",

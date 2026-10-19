@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "bls-bmc",
     "public": "build/web",
     "ignore": [
       "firebase.json",
