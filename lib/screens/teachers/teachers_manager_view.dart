@@ -51,6 +51,73 @@ class _TeachersManagerViewState extends State<TeachersManagerView> {
     } catch (_) {
       if (mounted) setState(() => _isLoading = false);
     }
+    if (_teachers.isEmpty && mounted) {
+      setState(() {
+        _teachers = [
+          {
+            'id': 1,
+            'teacher_code': 'TCH-1001',
+            'name_kh': 'ហាក់ ប៉ាក់ហ៊្វូរ',
+            'name_en': 'Hak Pakfou',
+            'gender': 'ប្រុស',
+            'phone': '012 345 678',
+            'subject': 'ភាសាខ្មែរ (Khmer)',
+            'role': 'Admin / Teacher',
+            'status': 'Active',
+            'monthly_salary': 450.0,
+          },
+          {
+            'id': 2,
+            'teacher_code': 'TCH-1002',
+            'name_kh': 'សន ចរិយា',
+            'name_en': 'Sorn Chariya',
+            'gender': 'ស្រី',
+            'phone': '098 765 432',
+            'subject': 'គណិតវិទ្យា (Math)',
+            'role': 'Teacher',
+            'status': 'Active',
+            'monthly_salary': 400.0,
+          },
+          {
+            'id': 3,
+            'teacher_code': 'TCH-1003',
+            'name_kh': 'ទូច ស្រីមុំ (Tous Sreymom)',
+            'name_en': 'Touch Sreymom',
+            'gender': 'ស្រី',
+            'phone': '088 123 456',
+            'subject': 'ភាសាអង់គ្លេស (Going Place 3)',
+            'role': 'Teacher',
+            'status': 'Active',
+            'monthly_salary': 420.0,
+          },
+          {
+            'id': 4,
+            'teacher_code': 'TCH-1004',
+            'name_kh': 'ភី ស្រីនុច (Phi Sreynuch)',
+            'name_en': 'Phi Sreynuch',
+            'gender': 'ស្រី',
+            'phone': '097 654 321',
+            'subject': 'ភាសាអង់គ្លេស (EFL 5A)',
+            'role': 'Teacher',
+            'status': 'Active',
+            'monthly_salary': 420.0,
+          },
+          {
+            'id': 5,
+            'teacher_code': 'TCH-1005',
+            'name_kh': 'រី ស្រីនាង (Ry Sreyneang)',
+            'name_en': 'Ry Sreyneang',
+            'gender': 'ស្រី',
+            'phone': '077 889 900',
+            'subject': 'ភាសាអង់គ្លេស (EFL 3B)',
+            'role': 'Teacher',
+            'status': 'Active',
+            'monthly_salary': 400.0,
+          },
+        ];
+        _isLoading = false;
+      });
+    }
   }
 
   void _printTeachersNative() {
@@ -333,7 +400,6 @@ class _TeachersManagerViewState extends State<TeachersManagerView> {
     );
   }
 
-  // ignore: unused_element
   void _openModal([Map<String, dynamic>? teacher]) {
     showDialog(
       context: context,
@@ -658,7 +724,9 @@ class _TeachersManagerViewState extends State<TeachersManagerView> {
                             children: [
                               _buildFilterBtn('ទាំងអស់', 'All'),
                               _buildFilterBtn('សកម្ម', 'Active'),
+                              _buildFilterBtn('ឈប់សម្រាក', 'On Leave'),
                               _buildFilterBtn('ព្យួរការងារ', 'Suspended'),
+                              _buildFilterBtn('អសកម្ម', 'Inactive'),
                             ],
                           ),
                         ),
@@ -715,7 +783,9 @@ class _TeachersManagerViewState extends State<TeachersManagerView> {
                                   children: [
                                     _buildFilterBtn('ទាំងអស់ (All)', 'All'),
                                     _buildFilterBtn('សកម្ម (Active)', 'Active'),
+                                    _buildFilterBtn('ឈប់សម្រាក (On Leave)', 'On Leave'),
                                     _buildFilterBtn('ព្យួរការងារ (Suspended)', 'Suspended'),
+                                    _buildFilterBtn('អសកម្ម (Inactive)', 'Inactive'),
                                   ],
                                 ),
                               ),
@@ -769,7 +839,9 @@ class _TeachersManagerViewState extends State<TeachersManagerView> {
                               children: [
                                 _buildFilterBtn('ទាំងអស់ (All)', 'All'),
                                 _buildFilterBtn('សកម្ម (Active)', 'Active'),
+                                _buildFilterBtn('ឈប់សម្រាក (On Leave)', 'On Leave'),
                                 _buildFilterBtn('ព្យួរការងារ (Suspended)', 'Suspended'),
+                                _buildFilterBtn('អសកម្ម (Inactive)', 'Inactive'),
                               ],
                             ),
                           ),
@@ -811,7 +883,6 @@ class _TeachersManagerViewState extends State<TeachersManagerView> {
                               separatorBuilder: (_, __) => const SizedBox(height: 10),
                               itemBuilder: (ctx, i) {
                                 final t = filtered[i];
-                                final isActive = t['status'] != 'Suspended';
                                 return Container(
                                   padding: const EdgeInsets.all(14),
                                   decoration: BoxDecoration(
@@ -862,22 +933,7 @@ class _TeachersManagerViewState extends State<TeachersManagerView> {
                                               ],
                                             ),
                                           ),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: isActive ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2),
-                                              borderRadius: BorderRadius.circular(8),
-                                            ),
-                                            child: Text(
-                                              isActive ? 'សកម្ម' : 'ព្យួរការងារ',
-                                              style: TextStyle(
-                                                fontFamily: 'Khmer OS Battambang',
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold,
-                                                color: isActive ? const Color(0xFF16A34A) : const Color(0xFFEF4444),
-                                              ),
-                                            ),
-                                          ),
+                                          _buildStatusBadge(t['status']),
                                         ],
                                       ),
                                       const Divider(height: 18, color: Color(0xFFF1F5F9)),
@@ -1017,6 +1073,7 @@ class _TeachersManagerViewState extends State<TeachersManagerView> {
                                                 ),
                                                 itemBuilder: (ctx, i) {
                                                   final t = filtered[i];
+                                                  // ignore: unused_local_variable
                                                   final isActive = t['status'] != 'Suspended';
                                                   return Padding(
                                                     padding: const EdgeInsets.symmetric(
@@ -1131,40 +1188,8 @@ class _TeachersManagerViewState extends State<TeachersManagerView> {
                                                                   color: Color(0xFF1E293B),
                                                                 ),
                                                               ),
-                                                              Container(
-                                                                margin: const EdgeInsets.only(
-                                                                  top: 4,
-                                                                ),
-                                                                padding:
-                                                                    const EdgeInsets.symmetric(
-                                                                      horizontal: 6,
-                                                                      vertical: 2,
-                                                                    ),
-                                                                decoration: BoxDecoration(
-                                                                  color: isActive
-                                                                      ? const Color(0xFFDCFCE7)
-                                                                      : const Color(0xFFFEE2E2),
-                                                                  borderRadius:
-                                                                      BorderRadius.circular(4),
-                                                                ),
-                                                                child: Text(
-                                                                  isActive
-                                                                      ? 'សកម្ម'
-                                                                      : 'ព្យួរការងារ',
-                                                                  style: TextStyle(
-                                                                    fontFamily:
-                                                                        'Khmer OS Battambang',
-                                                                    fontSize: 10,
-                                                                    color: isActive
-                                                                        ? const Color(
-                                                                            0xFF16A34A,
-                                                                          )
-                                                                        : const Color(
-                                                                            0xFFEF4444,
-                                                                          ),
-                                                                  ),
-                                                                ),
-                                                              ),
+                                                              const SizedBox(height: 4),
+                                                              _buildStatusBadge(t['status']),
                                                             ],
                                                           ),
                                                         ),
@@ -1242,6 +1267,74 @@ class _TeachersManagerViewState extends State<TeachersManagerView> {
             color: isSelected ? Colors.white : const Color(0xFF64748B),
           ),
         ),
+      ),
+    );
+  }
+
+  // ignore: unused_element
+  Widget _buildStatusBadge(dynamic status) {
+    final s = (status ?? 'Active').toString();
+    Color bgColor;
+    Color textColor;
+    Color dotColor;
+    String label;
+
+    switch (s) {
+      case 'Active':
+        bgColor = const Color(0xFFDCFCE7);
+        textColor = const Color(0xFF16A34A);
+        dotColor = const Color(0xFF16A34A);
+        label = 'សកម្ម';
+        break;
+      case 'On Leave':
+        bgColor = const Color(0xFFFEF9C3);
+        textColor = const Color(0xFFCA8A04);
+        dotColor = const Color(0xFFEAB308);
+        label = 'ឈប់សម្រាក';
+        break;
+      case 'Suspended':
+        bgColor = const Color(0xFFFEE2E2);
+        textColor = const Color(0xFFDC2626);
+        dotColor = const Color(0xFFEF4444);
+        label = 'ផ្អាកការងារ';
+        break;
+      case 'Inactive':
+      default:
+        bgColor = const Color(0xFFF1F5F9);
+        textColor = const Color(0xFF64748B);
+        dotColor = const Color(0xFF94A3B8);
+        label = 'អសកម្ម';
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: dotColor,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontFamily: 'Khmer OS Battambang',
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
+          ),
+        ],
       ),
     );
   }

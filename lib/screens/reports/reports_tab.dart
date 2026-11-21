@@ -23,7 +23,7 @@ class ReportsTab extends StatefulWidget {
 
 class _ReportsTabState extends State<ReportsTab>
     with SingleTickerProviderStateMixin {
-  static String baseUrl = ApiService.baseUrl;
+  static String get baseUrl => ApiService.baseUrl;
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
 

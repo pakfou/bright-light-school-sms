@@ -14,7 +14,7 @@
     This is a placeholder for base href that will be replaced by the value of
     the `--base-href` argument provided to `flutter build`.
   -->
-  <base href="./">
+  <base href="/">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
@@ -85,16 +85,241 @@
 
   <title>សាលាប្រាយឡាយ • Bright Light School</title>
   <link rel="manifest" href="manifest.json">
+
+  <style>
+    #bls-loading-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: radial-gradient(circle at 50% 30%, #1E293B 0%, #0F172A 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 99999;
+      color: #FFFFFF;
+      transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    #bls-loading-container.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .bls-logo-wrapper {
+      position: relative;
+      width: 96px;
+      height: 96px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .bls-pulse-ring {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 28px;
+      background: linear-gradient(135deg, #3B82F6 0%, #6366F1 100%);
+      opacity: 0.25;
+      animation: blsPulse 2.4s ease-in-out infinite;
+    }
+    .bls-logo-box {
+      position: relative;
+      width: 80px;
+      height: 80px;
+      border-radius: 24px;
+      background: linear-gradient(135deg, #2563EB 0%, #4F46E5 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.5), 0 8px 10px -6px rgba(59, 130, 246, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .bls-title-khmer {
+      font-family: var(--font-khmer-heading);
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: #F8FAFC;
+      margin: 0 0 4px 0;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    }
+    .bls-title-en {
+      font-family: var(--font-en-heading);
+      font-size: 13px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #94A3B8;
+      margin: 0 0 28px 0;
+      font-weight: 500;
+    }
+    .bls-progress-track {
+      width: 220px;
+      height: 6px;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+      position: relative;
+      margin-bottom: 16px;
+    }
+    .bls-progress-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 45%;
+      border-radius: 9999px;
+      background: linear-gradient(90deg, #38BDF8, #818CF8, #38BDF8);
+      background-size: 200% 100%;
+      animation: blsSlide 1.6s ease-in-out infinite;
+    }
+    .bls-status-text {
+      font-size: 13px;
+      color: #CBD5E1;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .bls-hint-box {
+      display: none;
+      margin-top: 20px;
+      padding: 10px 18px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      font-size: 12px;
+      color: #94A3B8;
+      text-align: center;
+      max-width: 280px;
+      animation: fadeIn 0.4s ease;
+    }
+    .bls-retry-btn {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 6px 14px;
+      background: #3B82F6;
+      color: white;
+      text-decoration: none;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+    }
+    @keyframes blsPulse {
+      0%, 100% { transform: scale(1); opacity: 0.25; }
+      50% { transform: scale(1.35); opacity: 0; }
+    }
+    @keyframes blsSlide {
+      0% { left: -45%; background-position: 0% 50%; }
+      50% { left: 45%; background-position: 100% 50%; }
+      100% { left: 100%; background-position: 0% 50%; }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
 </head>
 <body>
-  <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
+  <!-- High-end Splash Screen -->
+  <div id="bls-loading-container">
+    <div class="bls-logo-wrapper">
+      <div class="bls-pulse-ring"></div>
+      <div class="bls-logo-box">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 10v6M2 10l10-5 10 5-10 5z"/>
+          <path d="M6 12v5c3 3 9 3 12 0v-5"/>
+        </svg>
+      </div>
+    </div>
+    <div class="bls-title-khmer">សាលាប្រាយឡាយ</div>
+    <div class="bls-title-en">Bright Light School</div>
+    <div class="bls-progress-track">
+      <div class="bls-progress-bar"></div>
+    </div>
+    <p class="bls-status-text">
+      <span>កំពុងដំណើរការប្រព័ន្ធ... សូមរង់ចាំបន្តិច</span>
+    </p>
+    <div id="bls-loading-hint" class="bls-hint-box">
+      <div>កំពុងទាញយកទិន្នន័យ... ប្រសិនបើបណ្ដាញយឺត</div>
+      <button class="bls-retry-btn" onclick="hardReload()">ផ្ទុកឡើងវិញ (Clean Reload)</button>
+      <button class="bls-retry-btn" style="margin-left: 8px; background: rgba(255,255,255,0.15);" onclick="removeLoadingScreen()">បន្តទៅមុខ (Continue)</button>
+    </div>
+  </div>
 
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
-  -->
+  <script>
+    function removeLoadingScreen() {
+      const loader = document.getElementById('bls-loading-container');
+      if (loader && !loader.classList.contains('hidden')) {
+        loader.classList.add('hidden');
+        setTimeout(function() {
+          if (loader.parentNode) loader.parentNode.removeChild(loader);
+        }, 400);
+      }
+    }
+
+    function hardReload() {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          for (let r of regs) r.unregister();
+          if (window.caches) {
+            caches.keys().then(function(keys) {
+              for (let k of keys) caches.delete(k);
+              window.location.reload(true);
+            });
+          } else {
+            window.location.reload(true);
+          }
+        }).catch(function() {
+          window.location.reload(true);
+        });
+      } else {
+        window.location.reload(true);
+      }
+    }
+
+    // 1. Listen for Flutter first frame event
+    window.addEventListener('flutter-first-frame', removeLoadingScreen);
+
+    // 2. Continuous check for Flutter DOM elements
+    const checkInterval = setInterval(function() {
+      if (document.querySelector('flutter-view, flt-glass-pane, canvas, [flt-renderer]')) {
+        removeLoadingScreen();
+        clearInterval(checkInterval);
+      }
+    }, 250);
+
+    // 3. Safety fallback: watch for Flutter DOM insertion via MutationObserver
+    const observer = new MutationObserver(function(mutations, obs) {
+      if (document.querySelector('flutter-view, flt-glass-pane, canvas, [flt-renderer]')) {
+        setTimeout(removeLoadingScreen, 200);
+        obs.disconnect();
+        clearInterval(checkInterval);
+      }
+    });
+    if (document.body) {
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
+
+    // 4. Show friendly hint if loading takes longer than 8 seconds
+    setTimeout(function() {
+      const hint = document.getElementById('bls-loading-hint');
+      if (hint && document.getElementById('bls-loading-container')) {
+        hint.style.display = 'block';
+      }
+    }, 8000);
+
+    // 5. Ultimate failsafe: auto-dismiss after 15 seconds so user is NEVER trapped
+    setTimeout(function() {
+      if (document.querySelector('flutter-view, canvas, body > flt-glass-pane')) {
+        removeLoadingScreen();
+      }
+    }, 15000);
+  </script>
+
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

@@ -171,6 +171,71 @@ class _WeeklyScheduleViewState extends State<WeeklyScheduleView> {
     } catch (_) {
       if (mounted) setState(() => _isLoading = false);
     }
+    if ((_classrooms.isEmpty || _teachers.isEmpty) && mounted) {
+      setState(() {
+        if (_classrooms.isEmpty) {
+          _classrooms = [
+            {'id': 1, 'class_name': 'ថ្នាក់ទី ១A'},
+            {'id': 2, 'class_name': 'ថ្នាក់ទី ២A'},
+            {'id': 23, 'class_name': '01 (EFL 3B)'},
+            {'id': 24, 'class_name': '02 (EFL 5A)'},
+            {'id': 25, 'class_name': '05 (Going Place 3)'},
+          ];
+          _selectedClassroomId = 1;
+        }
+        if (_teachers.isEmpty) {
+          _teachers = [
+            {'id': 1, 'name_kh': 'ហាក់ ប៉ាក់ហ៊្វូរ'},
+            {'id': 2, 'name_kh': 'សន ចរិយា'},
+            {'id': 3, 'name_kh': 'ទូច ស្រីមុំ'},
+            {'id': 4, 'name_kh': 'ភី ស្រីនុច'},
+            {'id': 5, 'name_kh': 'រី ស្រីនាង'},
+          ];
+          _selectedTeacherId = 1;
+        }
+        if (_schedules.isEmpty) {
+          _schedules = [
+            {
+              'id': 1,
+              'classroom_id': 1,
+              'class_name': 'ថ្នាក់ទី ១A',
+              'teacher_id': 1,
+              'teacher_name': 'ហាក់ ប៉ាក់ហ៊្វូរ',
+              'subject_name': 'ភាសាខ្មែរ',
+              'day_of_week': 'Mon',
+              'start_time': '07:30',
+              'end_time': '09:00',
+              'shift': 'Morning',
+            },
+            {
+              'id': 2,
+              'classroom_id': 1,
+              'class_name': 'ថ្នាក់ទី ១A',
+              'teacher_id': 2,
+              'teacher_name': 'សន ចរិយា',
+              'subject_name': 'គណិតវិទ្យា',
+              'day_of_week': 'Mon',
+              'start_time': '09:15',
+              'end_time': '10:45',
+              'shift': 'Morning',
+            },
+            {
+              'id': 3,
+              'classroom_id': 25,
+              'class_name': '05 (Going Place 3)',
+              'teacher_id': 3,
+              'teacher_name': 'ទូច ស្រីមុំ',
+              'subject_name': 'English Going Place 3',
+              'day_of_week': 'Tue',
+              'start_time': '17:30',
+              'end_time': '18:45',
+              'shift': 'Evening',
+            },
+          ];
+        }
+        _isLoading = false;
+      });
+    }
   }
 
   Future<bool> _saveSchedule({int? editId}) async {

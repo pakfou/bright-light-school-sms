@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS teachers (
     role_title VARCHAR(100) DEFAULT 'គ្រូបង្រៀន',
     specialized_subject VARCHAR(150) NULL,
     base_salary DECIMAL(10,2) DEFAULT 0.00,
-    status ENUM('Active', 'Inactive') DEFAULT 'Active',
+    status VARCHAR(50) DEFAULT 'Active',
     hire_date DATE NULL,
     photo_url VARCHAR(255) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS students (
     part_time_course ENUM('English', 'Chinese', 'Computer', 'None') DEFAULT 'None',
     classroom_id INT NULL,
     photo_url VARCHAR(255) NULL,
-    status ENUM('Active', 'Suspended', 'Graduated') DEFAULT 'Active',
+    status VARCHAR(50) DEFAULT 'Active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (classroom_id) REFERENCES classrooms(id) ON DELETE SET NULL
 );

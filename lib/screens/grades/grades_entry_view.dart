@@ -21,7 +21,7 @@ class GradesEntryView extends StatefulWidget {
 }
 
 class _GradesEntryViewState extends State<GradesEntryView> {
-  static String baseUrl = ApiService.baseUrl;
+  static String get baseUrl => ApiService.baseUrl;
 
   int _selectedTab = 0;
   int _selectedStudentIndex = 0;
@@ -447,8 +447,14 @@ class _GradesEntryViewState extends State<GradesEntryView> {
         body: jsonEncode({'grades': allGrades}),
       );
       if (res.statusCode == 200) {
+        // Automatically calculate and persist rankings on the backend API
+        ApiService.calculateRanking(
+          monthName: _selectedExamPeriod,
+          saveToDb: true,
+        ).catchError((_) => <String, dynamic>{});
+
         _showSuccessSnack(
-          'បានរក្សាទុកពិន្ទុសិស្សទាំងអស់ (${_filteredStudents.length} នាក់) ជោគជ័យ!',
+          'បានរក្សាទុកពិន្ទុ និងគណនាចំណាត់ថ្នាក់សិស្សទាំងអស់ (${_filteredStudents.length} នាក់) ជោគជ័យ!',
         );
       } else {
         throw Exception('Server error: ${res.statusCode}');

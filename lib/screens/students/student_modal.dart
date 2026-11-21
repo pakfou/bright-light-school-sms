@@ -18,7 +18,7 @@ class StudentModal extends StatefulWidget {
 }
 
 class _StudentModalState extends State<StudentModal> {
-  static String baseUrl = ApiService.baseUrl;
+  static String get baseUrl => ApiService.baseUrl;
 
   final _formKey = GlobalKey<FormState>();
 

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:pdf/pdf.dart';
@@ -13,6 +14,7 @@ import 'package:printing/printing.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:school_management_app/services/api_service.dart';
 import 'package:school_management_app/services/html_print_service.dart';
+import 'package:school_management_app/utils/image_download_helper.dart';
 // ignore: unused_import
 import 'package:school_management_app/utils/app_theme.dart';
 import 'package:school_management_app/utils/app_logo.dart';
@@ -27,7 +29,7 @@ class IdCardCreatorView extends StatefulWidget {
 }
 
 class _IdCardCreatorViewState extends State<IdCardCreatorView> {
-  static String baseUrl = ApiService.baseUrl;
+  static String get baseUrl => ApiService.baseUrl;
 
   Widget _buildPersonPhotoWidget({
     dynamic photoUrl,
@@ -74,6 +76,7 @@ class _IdCardCreatorViewState extends State<IdCardCreatorView> {
         width: width,
         height: height,
         decoration: BoxDecoration(
+          color: const Color(0xFFE2E8F0),
           borderRadius: BorderRadius.circular(borderRadius),
           border: border ?? Border.all(color: Colors.white, width: 2),
           boxShadow: [
@@ -114,6 +117,7 @@ class _IdCardCreatorViewState extends State<IdCardCreatorView> {
         width: width,
         height: height,
         decoration: BoxDecoration(
+          color: const Color(0xFFE2E8F0),
           borderRadius: BorderRadius.circular(borderRadius),
           border: border ?? Border.all(color: Colors.white, width: 2),
           boxShadow: [
@@ -146,6 +150,7 @@ class _IdCardCreatorViewState extends State<IdCardCreatorView> {
         width: width,
         height: height,
         decoration: BoxDecoration(
+          color: const Color(0xFFE2E8F0),
           borderRadius: BorderRadius.circular(borderRadius),
           border: border ?? Border.all(color: Colors.white, width: 2),
         ),
@@ -348,10 +353,85 @@ class _IdCardCreatorViewState extends State<IdCardCreatorView> {
   String _cardSide = 'Both';
   String _bgPattern = 'Seal';
   String _themeColor = 'Royal Blue';
-  bool _hasLanyard = true;
+  bool _hasLanyard = false;
   bool _hasGloss = true;
   // ignore: prefer_final_fields, unused_field
   double _previewScale = 1.0;
+
+  // GlobalKeys for capturing exact high-resolution ID card designs directly from screen
+  final GlobalKey _landscapeFrontKey = GlobalKey();
+  final GlobalKey _landscapeBackKey = GlobalKey();
+  final GlobalKey _portraitFrontKey = GlobalKey();
+  final GlobalKey _portraitBackKey = GlobalKey();
+
+  Future<Uint8List?> _captureCardWidget(GlobalKey key) async {
+    try {
+      final boundary =
+          key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) return null;
+      final ui.Image image = await boundary.toImage(pixelRatio: 3.5);
+      final byteData =
+          await image.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    } catch (e) {
+      debugPrint('Card capture error: $e');
+      return null;
+    }
+  }
+
+  // ignore: unused_element
+  Future<void> _downloadCardPng() async {
+    if (_selectedPerson == null) return;
+    try {
+      final isLandscape = _orientation == 'Landscape';
+      final frontKey = isLandscape ? _landscapeFrontKey : _portraitFrontKey;
+      final backKey = isLandscape ? _landscapeBackKey : _portraitBackKey;
+      final code = _isStudent
+          ? (_selectedPerson!['student_code'] ?? 'STU-001')
+          : (_selectedPerson!['teacher_code'] ?? 'TCH-001');
+
+      Uint8List? bytes;
+      if (_cardSide == 'Back') {
+        bytes = await _captureCardWidget(backKey);
+      } else {
+        bytes = await _captureCardWidget(frontKey);
+      }
+
+      if (bytes != null) {
+        downloadImageBytes(bytes, 'BLS_ID_Card_${code}_$_cardSide.png');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'បានទាញយករូបភាពកាត HD (PNG) ជោគជ័យ៖ BLS_ID_Card_$code.png',
+                style: const TextStyle(fontFamily: 'Khmer OS Battambang'),
+              ),
+              backgroundColor: const Color(0xFF059669),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'មិនទាន់អាចចាប់យករូបភាពបានទេ សូមរង់ចាំមួយភ្លែត រួចសាកល្បងម្ដងទៀត',
+                style: TextStyle(fontFamily: 'Khmer OS Battambang'),
+              ),
+              backgroundColor: Color(0xFFDC2626),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('កំហុសក្នុងការទាញយក PNG៖ $e')),
+        );
+      }
+    }
+  }
 
   List<dynamic> _students = [];
   List<dynamic> _teachers = [];
@@ -1318,6 +1398,7 @@ class _IdCardCreatorViewState extends State<IdCardCreatorView> {
 
   Future<void> _printIdCard({bool sheetA4 = true}) async {
     if (_selectedPerson == null) return;
+    final assetBundle = DefaultAssetBundle.of(context);
     try {
       final nameKh = _selectedPerson!['name_kh'] ?? 'ឈ្មោះទូទៅ';
       final nameEn = _selectedPerson!['name_en'] ?? '';
@@ -1338,6 +1419,32 @@ class _IdCardCreatorViewState extends State<IdCardCreatorView> {
 
       final isLandscape = _orientation == 'Landscape';
 
+      // 1. Primary WYSIWYG: Capture pixel-perfect high-resolution design directly from the ID Studio screen!
+      final frontKey = isLandscape ? _landscapeFrontKey : _portraitFrontKey;
+      final backKey = isLandscape ? _landscapeBackKey : _portraitBackKey;
+      Uint8List? frontBytes;
+      Uint8List? backBytes;
+
+      if (_cardSide == 'Front' || _cardSide == 'Both') {
+        frontBytes = await _captureCardWidget(frontKey);
+      }
+      if (_cardSide == 'Back' || _cardSide == 'Both') {
+        backBytes = await _captureCardWidget(backKey);
+      }
+
+      if (frontBytes != null || backBytes != null) {
+        HtmlPrintService.printCapturedIdCards(
+          frontPngBase64: frontBytes != null ? base64Encode(frontBytes) : null,
+          backPngBase64: backBytes != null ? base64Encode(backBytes) : null,
+          code: code,
+          name: nameKh.isNotEmpty ? nameKh : nameEn,
+          isLandscape: isLandscape,
+          cardSide: _cardSide,
+          sheetA4: sheetA4,
+        );
+        return;
+      }
+
       String? photoUrlStr = (_selectedPerson!['photo_url'] ??
               _selectedPerson!['photo'] ??
               _selectedPerson!['avatar'] ??
@@ -1349,7 +1456,8 @@ class _IdCardCreatorViewState extends State<IdCardCreatorView> {
         if (photoUrlStr.startsWith('assets/')) {
           try {
             final byteData =
-                await DefaultAssetBundle.of(context).load(photoUrlStr);
+                // ignore: use_build_context_synchronously
+                await assetBundle.load(photoUrlStr);
             final bytes = byteData.buffer.asUint8List();
             photoUrlStr = 'data:image/png;base64,${base64Encode(bytes)}';
           } catch (_) {}
@@ -2879,135 +2987,66 @@ class _IdCardCreatorViewState extends State<IdCardCreatorView> {
           ),
           const SizedBox(height: 16),
 
-          // Lanyard & Gloss Features (Interactive Switch Cards)
-          Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  onTap: () => setState(() => _hasLanyard = !_hasLanyard),
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _hasLanyard
-                          ? const Color(0xFFEFF6FF)
-                          : const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: _hasLanyard
-                            ? const Color(0xFF93C5FD)
-                            : const Color(0xFFE2E8F0),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.tag_rounded,
-                          size: 16,
-                          color: _hasLanyard
-                              ? const Color(0xFF2563EB)
-                              : const Color(0xFF64748B),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            'រន្ធខ្សែរ (Lanyard)',
-                            style: TextStyle(
-                              fontFamily: 'Khmer OS Battambang',
-                              fontSize: 10.5,
-                              fontWeight: _hasLanyard
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                              color: _hasLanyard
-                                  ? const Color(0xFF1E40AF)
-                                  : const Color(0xFF475569),
-                            ),
-                          ),
-                        ),
-                        SizedBox(
-                          height: 20,
-                          width: 32,
-                          child: Switch(
-                            materialTapTargetSize:
-                                MaterialTapTargetSize.shrinkWrap,
-                            value: _hasLanyard,
-                            // ignore: deprecated_member_use
-                            activeColor: const Color(0xFF2563EB),
-                            onChanged: (v) => setState(() => _hasLanyard = v),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+          // Gloss Feature (Interactive Switch Card)
+          InkWell(
+            onTap: () => setState(() => _hasGloss = !_hasGloss),
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 10,
+              ),
+              decoration: BoxDecoration(
+                color: _hasGloss
+                    ? const Color(0xFFF5F3FF)
+                    : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: _hasGloss
+                      ? const Color(0xFFC4B5FD)
+                      : const Color(0xFFE2E8F0),
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: InkWell(
-                  onTap: () => setState(() => _hasGloss = !_hasGloss),
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _hasGloss
-                          ? const Color(0xFFF5F3FF)
-                          : const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.auto_awesome_rounded,
+                    size: 18,
+                    color: _hasGloss
+                        ? const Color(0xFF7C3AED)
+                        : const Color(0xFF64748B),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'ពន្លឺរលោងលើកាត (Gloss Effect)',
+                      style: TextStyle(
+                        fontFamily: 'Khmer OS Battambang',
+                        fontSize: 11,
+                        fontWeight: _hasGloss
+                            ? FontWeight.bold
+                            : FontWeight.normal,
                         color: _hasGloss
-                            ? const Color(0xFFC4B5FD)
-                            : const Color(0xFFE2E8F0),
+                            ? const Color(0xFF5B21B6)
+                            : const Color(0xFF475569),
                       ),
                     ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.auto_awesome_rounded,
-                          size: 16,
-                          color: _hasGloss
-                              ? const Color(0xFF7C3AED)
-                              : const Color(0xFF64748B),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            'ពន្លឺរលោង (Gloss)',
-                            style: TextStyle(
-                              fontFamily: 'Khmer OS Battambang',
-                              fontSize: 10.5,
-                              fontWeight: _hasGloss
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                              color: _hasGloss
-                                  ? const Color(0xFF5B21B6)
-                                  : const Color(0xFF475569),
-                            ),
-                          ),
-                        ),
-                        SizedBox(
-                          height: 20,
-                          width: 32,
-                          child: Switch(
-                            materialTapTargetSize:
-                                MaterialTapTargetSize.shrinkWrap,
-                            value: _hasGloss,
-                            // ignore: deprecated_member_use
-                            activeColor: const Color(0xFF7C3AED),
-                            onChanged: (v) => setState(() => _hasGloss = v),
-                          ),
-                        ),
-                      ],
+                  ),
+                  SizedBox(
+                    height: 22,
+                    width: 36,
+                    child: Switch(
+                      materialTapTargetSize:
+                          MaterialTapTargetSize.shrinkWrap,
+                      value: _hasGloss,
+                      // ignore: deprecated_member_use
+                      activeColor: const Color(0xFF7C3AED),
+                      onChanged: (v) => setState(() => _hasGloss = v),
                     ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
         ],
       ),
@@ -3180,18 +3219,7 @@ class _IdCardCreatorViewState extends State<IdCardCreatorView> {
               Expanded(
                 child: InkWell(
                   onTap: () {
-                    _printIdCard();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'កំពុងរៀបចំទម្រង់រូបភាពកាត HD...',
-                          style: TextStyle(fontFamily: 'Khmer OS Battambang'),
-                        ),
-                        backgroundColor: Color(0xFF059669),
-                        behavior: SnackBarBehavior.floating,
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
+                    _downloadCardPng();
                   },
                   borderRadius: BorderRadius.circular(10),
                   child: Container(
@@ -4156,16 +4184,18 @@ class _IdCardCreatorViewState extends State<IdCardCreatorView> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  '• វិន័យ និងបទបញ្ជាផ្ទៃក្នុង •',
-                                  style: TextStyle(
-                                    fontFamily: 'Khmer OS Battambang',
-                                    fontSize: 8.5,
-                                    fontWeight: FontWeight.bold,
-                                    color: themeColor,
+                                Center(
+                                  child: Text(
+                                    '• វិន័យ និងបទបញ្ជាផ្ទៃក្នុង •',
+                                    style: TextStyle(
+                                      fontFamily: 'Khmer OS Battambang',
+                                      fontSize: 8.8,
+                                      fontWeight: FontWeight.bold,
+                                      color: themeColor,
+                                    ),
                                   ),
                                 ),
-                                const SizedBox(height: 4),
+                                const SizedBox(height: 5),
                                 _buildRuleItem(
                                   '១. ត្រូវពាក់ប័ណ្ណនេះជាប់ខ្លួនជានិច្ចពេលនៅក្នុងសាលា។',
                                 ),
@@ -4182,17 +4212,17 @@ class _IdCardCreatorViewState extends State<IdCardCreatorView> {
                                 Container(
                                   width: double.infinity,
                                   padding: const EdgeInsets.symmetric(
-                                    vertical: 2,
+                                    vertical: 3,
                                   ),
                                   decoration: BoxDecoration(
                                     color: themeColor.withValues(alpha: 0.08),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Text(
-                                    '• DISCIPLINE • RESPECT • HONESTY • INTEGRITY •',
+                                    'DISCIPLINE • RESPECT • INTEGRITY • EXCELLENCE',
                                     textAlign: TextAlign.center,
                                     style: GoogleFonts.outfit(
-                                      fontSize: 6.5,
+                                      fontSize: 6.8,
                                       fontWeight: FontWeight.w800,
                                       color: themeColor,
                                       letterSpacing: 0.5,

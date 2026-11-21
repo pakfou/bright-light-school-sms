@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 
 class TeacherModal extends StatefulWidget {
   final Map<String, dynamic>? teacher;
@@ -21,7 +21,7 @@ class TeacherModal extends StatefulWidget {
 
 class _TeacherModalState extends State<TeacherModal> {
   // ignore: unused_field
-  static String baseUrl = ApiService.baseUrl;
+  static String get baseUrl => ApiService.baseUrl;
 
   // ignore: unused_field
   final _formKey = GlobalKey<FormState>();
@@ -114,34 +114,27 @@ class _TeacherModalState extends State<TeacherModal> {
 
   Future<void> _pickImageFromComputer() async {
     try {
-      final result = await FilePicker.pickFiles(type: FileType.image);
+      final picker = ImagePicker();
+      final XFile? file = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 85,
+      );
 
-      // ignore: unnecessary_null_comparison
-      if (result != null && result.isNotEmpty) {
-        final platformFile = result.first;
-        final bytes = await platformFile.readAsBytes();
-
-        // Try to get extension from name, or fallback to png
-        String extension = 'png';
-        try {
-          // Check if platformFile has a name property or use a safe fallback
-          final dynamic fileDynamic = platformFile;
-          if (fileDynamic.name != null && fileDynamic.name.contains('.')) {
-            extension = fileDynamic.name.split('.').last.toLowerCase();
-          }
-        } catch (_) {}
-
-        final mimeType = extension == 'jpg' ? 'image/jpeg' : 'image/$extension';
-        final base64Image = base64Encode(bytes);
+      if (file != null) {
+        final bytes = await file.readAsBytes();
+        final ext = file.name.split('.').last.toLowerCase();
+        final mimeType = ext == 'png' ? 'png' : 'jpeg';
+        final base64String = 'data:image/$mimeType;base64,${base64Encode(bytes)}';
 
         setState(() {
           _imageBytes = bytes;
-          _photoUrlCtrl.text = 'data:$mimeType;base64,$base64Image';
+          _photoUrlCtrl.text = base64String;
         });
       }
     } catch (e) {
-      // ignore: avoid_print
-      print('Error picking image: $e');
+      debugPrint('Error picking image: $e');
     }
   }
 
@@ -447,8 +440,7 @@ class _TeacherModalState extends State<TeacherModal> {
                           Expanded(
                             child: DropdownButtonFormField<String>(
                               isExpanded: true,
-                              // ignore: deprecated_member_use
-                              value: (_gender == 'Female') ? 'Female' : 'Male',
+                              initialValue: (_gender == 'Female') ? 'Female' : 'Male',
                               decoration: _inputStyle(
                                 'ភេទ (Gender)',
                                 Icons.transgender,
@@ -560,6 +552,78 @@ class _TeacherModalState extends State<TeacherModal> {
                                   ),
                                 ),
                               ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Row 6: ស្ថានភាពសកម្មភាព (Status / Activity) & តួនាទី (Role Title)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              isExpanded: true,
+                              initialValue: ['Active', 'On Leave', 'Suspended', 'Inactive'].contains(_status)
+                                  ? _status
+                                  : 'Active',
+                              decoration: _inputStyle(
+                                'ស្ថានភាពសកម្មភាព (Status)',
+                                Icons.verified_user_outlined,
+                              ),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'Active',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.circle, color: Color(0xFF16A34A), size: 12),
+                                      SizedBox(width: 8),
+                                      Text('សកម្ម (Active)'),
+                                    ],
+                                  ),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'On Leave',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.circle, color: Color(0xFFEAB308), size: 12),
+                                      SizedBox(width: 8),
+                                      Text('ឈប់សម្រាក (On Leave)'),
+                                    ],
+                                  ),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Suspended',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.circle, color: Color(0xFFEF4444), size: 12),
+                                      SizedBox(width: 8),
+                                      Text('ផ្អាកបណ្តោះអាសន្ន (Suspended)'),
+                                    ],
+                                  ),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Inactive',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.circle, color: Color(0xFF64748B), size: 12),
+                                      SizedBox(width: 8),
+                                      Text('អសកម្ម (Inactive)'),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              onChanged: (v) {
+                                if (v != null) setState(() => _status = v);
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: _roleTitleCtrl,
+                              label: 'តួនាទី / មុខតំណែង (Role Title)',
+                              icon: Icons.badge_outlined,
                             ),
                           ),
                         ],

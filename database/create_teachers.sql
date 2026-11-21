@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS teachers (
     specialized_subject VARCHAR(150),             
     base_salary DECIMAL(10, 2) DEFAULT 0.00,      
     photo_url VARCHAR(255) DEFAULT 'default.png', 
-    status ENUM('Active', 'On_Leave', 'Resigned') DEFAULT 'Active', 
+    status VARCHAR(50) DEFAULT 'Active', 
     hire_date DATE NULL,                          
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

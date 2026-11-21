@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS teachers (
     role_title VARCHAR(100) DEFAULT 'គ្រូបង្រៀន',
     specialized_subject VARCHAR(150) NULL,
     base_salary DECIMAL(10,2) DEFAULT 0.00,
-    status ENUM('Active', 'Inactive') DEFAULT 'Active',
+    status VARCHAR(50) DEFAULT 'Active',
     hire_date DATE NULL,
     photo_url LONGTEXT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

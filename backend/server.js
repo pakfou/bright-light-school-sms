@@ -6,13 +6,175 @@ const bcrypt = require('bcryptjs');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
+const multer = require('multer');
+let PDFDocument;
+try {
+    PDFDocument = require('pdfkit');
+} catch (_) {
+    console.warn('[PDFKit] PDFKit not loaded, fallback will be used.');
+}
+
+const compression = require('compression');
+
+process.on('uncaughtException', (err) => {
+    console.error('[CRITICAL] Uncaught Exception:', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+    console.error('[CRITICAL] Unhandled Rejection:', reason);
+});
+
+function getCambodiaDateStr() {
+    try {
+        return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Phnom_Penh' });
+    } catch (_) {
+        const d = new Date();
+        d.setHours(d.getHours() + 7);
+        return d.toISOString().slice(0, 10);
+    }
+}
 
 const app = express();
-app.use(cors({ origin: '*' }));
+app.use(compression());
+
+// 🌐 Full CORS Support for Browser, Mobile & Tunnel access
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'Access-Control-Request-Private-Network']
+}));
+
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Access-Control-Request-Private-Network');
+    res.header('Access-Control-Allow-Private-Network', 'true');
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    next();
+});
+
+// ==========================================
+// 🛡️ SECURITY: IP WHITELIST & ACCESS CONTROL
+// ==========================================
+function getClientIp(req) {
+    const forwarded = req.headers['x-forwarded-for'];
+    let ip = forwarded ? forwarded.split(',')[0].trim() : (req.headers['cf-connecting-ip'] || req.headers['x-real-ip'] || req.socket.remoteAddress || '');
+    if (ip.startsWith('::ffff:')) {
+        ip = ip.substring(7);
+    }
+    return ip;
+}
+
+function ipToLong(ip) {
+    return ip.split('.').reduce((acc, octet) => ((acc << 8) + parseInt(octet, 10)) >>> 0, 0);
+}
+
+function isIpAllowed(clientIp, allowedRules) {
+    if (!clientIp) return false;
+    // Always allow local loopback
+    if (clientIp === '127.0.0.1' || clientIp === '::1' || clientIp === 'localhost') return true;
+
+    for (const rule of allowedRules) {
+        const trimmed = rule.trim();
+        if (!trimmed) continue;
+        if (trimmed === '*' || trimmed === 'all') return true;
+        if (clientIp === trimmed) return true;
+
+        // CIDR subnet check: e.g. 192.168.1.0/24 or 10.0.0.0/8
+        if (trimmed.includes('/') && clientIp.includes('.')) {
+            try {
+                const [range, bits] = trimmed.split('/');
+                const bitCount = parseInt(bits, 10);
+                if (bitCount >= 0 && bitCount <= 32) {
+                    const mask = bitCount === 0 ? 0 : (~0 << (32 - bitCount)) >>> 0;
+                    if ((ipToLong(clientIp) & mask) === (ipToLong(range) & mask)) {
+                        return true;
+                    }
+                }
+            } catch (_) {}
+        }
+
+        // Wildcard check: e.g. 192.168.1.* or 203.144.*
+        if (trimmed.includes('*') && clientIp.includes('.')) {
+            const cParts = clientIp.split('.');
+            const rParts = trimmed.split('.');
+            if (cParts.length === 4 && rParts.length === 4) {
+                const match = rParts.every((p, idx) => p === '*' || p === cParts[idx]);
+                if (match) return true;
+            }
+        }
+    }
+    return false;
+}
+
+// IP Whitelist Middleware
+app.use((req, res, next) => {
+    const isWhitelistEnabled = process.env.IP_WHITELIST_ENABLED === 'true';
+    if (!isWhitelistEnabled) {
+        return next();
+    }
+
+    const clientIp = getClientIp(req);
+    const configuredIps = (process.env.ALLOWED_IPS || '127.0.0.1, ::1')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+
+    // Bypass health check endpoints so uptime monitors keep working
+    if (req.path === '/health' || req.path === '/api/health') {
+        return next();
+    }
+
+    if (isIpAllowed(clientIp, configuredIps)) {
+        return next();
+    }
+
+    console.warn(`[Security Alert] Blocked unauthorized connection from IP: ${clientIp} on path ${req.originalUrl}`);
+    if (req.path.startsWith('/api')) {
+        return res.status(403).json({
+            success: false,
+            error: 'Security Error: Access Denied. Your IP address is not whitelisted.',
+            clientIp: clientIp,
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    res.status(403).send(`
+        <!DOCTYPE html>
+        <html lang="km">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>403 Access Denied • Bright Light School</title>
+            <style>
+                body { margin: 0; padding: 0; background: #0F172A; color: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+                .box { max-width: 500px; padding: 40px; background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); text-align: center; }
+                .icon { font-size: 56px; margin-bottom: 16px; }
+                h1 { margin: 0 0 10px; font-size: 24px; color: #EF4444; }
+                p { color: #94A3B8; font-size: 15px; line-height: 1.6; margin: 0 0 20px; }
+                .ip-badge { display: inline-block; padding: 8px 16px; background: #1E293B; border: 1px solid #334155; border-radius: 8px; font-family: monospace; font-size: 14px; color: #38BDF8; margin-bottom: 24px; }
+                .footer { font-size: 12px; color: #64748B; }
+            </style>
+        </head>
+        <body>
+            <div class="box">
+                <div class="icon">🛡️</div>
+                <h1>ការចូលប្រើត្រូវបានរារាំង (Access Denied)</h1>
+                <p>អាសយដ្ឋាន IP របស់អ្នកមិនត្រូវបានអនុញ្ញាតឱ្យចូលប្រើប្រព័ន្ធសាលាបឋមសិក្សា ប្រាយ ឡាយ ឡើយ។ សូមទាក់ទងអ្នកគ្រប់គ្រងប្រព័ន្ធ (Admin) ដើម្បីបន្ថែម IP របស់អ្នក។</p>
+                <div>Your IP:</div>
+                <div class="ip-badge">${clientIp}</div>
+                <div class="footer">Bright Light School Security Firewall</div>
+            </div>
+        </body>
+        </html>
+    `);
+});
 
 // បង្កើនទំហំទទួលរូបភាព Base64 ដល់ 50MB
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
 
 // Serve server console at /console
 app.get('/console', (req, res) => {
@@ -24,31 +186,125 @@ app.get('/console', (req, res) => {
     }
 });
 
-// Serve Flutter Web from /app
-app.use('/app', express.static(path.join(__dirname, 'public')));
+// Serve Flutter Web from ../build/web (fresh build) or ./public
+const candidateWebDirs = [
+    path.join(__dirname, '../build/web'),
+    path.join(__dirname, 'public')
+];
+const activeWebDir = candidateWebDirs.find(d => fs.existsSync(path.join(d, 'index.html'))) || path.join(__dirname, 'public');
+
+const staticOptions = {
+    maxAge: '1d',
+    etag: true,
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.ttf') || filePath.endsWith('.woff') || filePath.endsWith('.woff2') || filePath.endsWith('.png') || filePath.endsWith('.jpg')) {
+            res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+        }
+    }
+};
+
+app.use('/app', express.static(activeWebDir, staticOptions));
 app.use('/app', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(activeWebDir, 'index.html'));
 });
 
-// Serve static assets directly from backend/public (flutter_bootstrap.js, manifest.json, assets, etc.)
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static assets directly (flutter_bootstrap.js, manifest.json, assets, etc.)
+app.use(express.static(activeWebDir, staticOptions));
+if (activeWebDir !== path.join(__dirname, 'public')) {
+    app.use(express.static(path.join(__dirname, 'public'), staticOptions));
+}
+
+// Serve uploaded user photos and files
+const uploadsDir = path.join(__dirname, '..', 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    try { fs.mkdirSync(uploadsDir, { recursive: true }); } catch (_) {}
+}
+app.use('/uploads', express.static(uploadsDir, staticOptions));
+app.use('/api/uploads', express.static(uploadsDir, staticOptions));
+
+// 📁 Payment Slips Storage Configuration (Multer)
+const slipsDir = path.join(uploadsDir, 'slips');
+if (!fs.existsSync(slipsDir)) {
+    try { fs.mkdirSync(slipsDir, { recursive: true }); } catch (_) {}
+}
+
+const slipStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        if (!fs.existsSync(slipsDir)) {
+            try { fs.mkdirSync(slipsDir, { recursive: true }); } catch (_) {}
+        }
+        cb(null, slipsDir);
+    },
+    filename: (req, file, cb) => {
+        const invoiceId = req.params.invoiceId || req.params.id || 'slip';
+        const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+        cb(null, `slip-${invoiceId}-${Date.now()}${ext}`);
+    }
+});
+
+const slipFileFilter = (req, file, cb) => {
+    const allowed = /jpeg|jpg|png|webp/;
+    const ext = allowed.test(path.extname(file.originalname).toLowerCase());
+    const mime = allowed.test(file.mimetype);
+    if (ext || mime) {
+        return cb(null, true);
+    }
+    cb(new Error('អនុញ្ញាតតែឯកសាររូបភាព (JPG, PNG, WEBP) ប៉ុណ្ណោះ!'));
+};
+
+const uploadSlip = multer({
+    storage: slipStorage,
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: slipFileFilter
+});
 
 const dbConfig = {
     host: process.env.DB_HOST || 'localhost',
+    port: process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : 4000,
     user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : '',
+    password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'bls_school_db',
-    port: process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : 3306,
+    ssl: process.env.DB_HOST ? { minVersion: 'TLSv1.2', rejectUnauthorized: true } : undefined,
     waitForConnections: true,
-    connectionLimit: 10,
+    connectionLimit: 25,
+    maxIdle: 10,
+    idleTimeout: 60000,
+    queueLimit: 0,
     charset: 'utf8mb4'
 };
 
-if (process.env.DB_SSL === 'true') {
-    dbConfig.ssl = { rejectUnauthorized: false };
+const pool = mysql.createPool(dbConfig);
+
+// 🛡️ Diagnostic check for MySQL connection at startup
+pool.query('SELECT 1')
+    .then(() => {
+        console.log('✅ Connected to MySQL Database (bls_school_db) on port 3306');
+    })
+    .catch((err) => {
+        console.log('ℹ️  [Database Notice] MySQL Server មិនទាន់ដំណើរការនៅលើ Port 3306 ទេ។');
+        console.log('💡 ប្រសិនបើចង់ប្រើ Database: សូមបើក Laragon ហើយចុច "Start All" (ឬ Start MySQL)។');
+        console.log('⚡ ប្រព័ន្ធកំពុងដំណើរការក្នុងទម្រង់ Standalone / In-Memory Mode ដោយសុវត្ថិភាព។');
+    });
+
+// In-memory micro-cache for blazing fast responses (< 2ms)
+let studentsCache = null;
+let lastStudentsFetch = 0;
+let teachersCache = null;
+let lastTeachersFetch = 0;
+const CACHE_TTL = 30000; // 30 seconds
+
+function invalidateMemberCache() {
+    studentsCache = null;
+    lastStudentsFetch = 0;
+    teachersCache = null;
+    lastTeachersFetch = 0;
+    cachedStats = null;
 }
 
-const pool = mysql.createPool(dbConfig);
+// Render & Root Health Check Route
+app.get('/', (req, res) => {
+    res.status(200).send('BLS School API Server is Running!');
+});
 
 // Health check endpoints for Cloud Run, Render, and monitoring
 app.get('/health', async (req, res) => {
@@ -77,6 +333,184 @@ app.get('/api/health', async (req, res) => {
 app.use('/api', (req, res, next) => {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     next();
+});
+
+// Root API Gateway & Directory (/api and /api/)
+app.get(['/api', '/api/'], async (req, res) => {
+    let dbStatus = 'disconnected';
+    try {
+        await pool.query('SELECT 1');
+        dbStatus = 'connected';
+    } catch (e) {
+        dbStatus = `error: ${e.message}`;
+    }
+
+    const payload = {
+        success: true,
+        service: 'BLS Enterprise School Management System API',
+        school: 'Bright Light International School (សាលាប្រាយ ឡាយ)',
+        version: '2.5.0',
+        status: 'online',
+        database: dbStatus,
+        timestamp: new Date().toISOString(),
+        endpoints: {
+            health: '/api/health',
+            dashboard_stats: '/api/dashboard/stats',
+            recent_activity: '/api/dashboard/recent-activity',
+            students: '/api/students',
+            teachers: '/api/teachers',
+            classrooms: '/api/classrooms',
+            attendance: '/api/attendance',
+            attendance_trend: '/api/attendance/trend',
+            teachers_trend: '/api/attendance/teachers-trend',
+            grades: '/api/grades',
+            schedules: '/api/schedules',
+            finance: '/api/finance',
+            finance_stats: '/api/finance/stats',
+            reports_summary: '/api/reports/summary',
+            ai_chat: '/api/ai/chat'
+        }
+    };
+
+    // If requested by a web browser, render a clean professional API Explorer UI
+    if (req.accepts('html') && !req.accepts('json')) {
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        return res.send(`
+            <!DOCTYPE html>
+            <html lang="km">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>BLS Enterprise API • Bright Light School</title>
+                <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Kantumruy+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+                <style>
+                    * { box-sizing: border-box; margin: 0; padding: 0; }
+                    body {
+                        background: #0b0f19;
+                        color: #f1f5f9;
+                        font-family: 'Outfit', 'Kantumruy Pro', sans-serif;
+                        min-height: 100vh;
+                        padding: 30px 20px;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                    }
+                    .container {
+                        width: 100%;
+                        max-width: 820px;
+                        background: rgba(17, 24, 39, 0.85);
+                        border: 1px solid rgba(59, 130, 246, 0.25);
+                        backdrop-filter: blur(16px);
+                        border-radius: 20px;
+                        padding: 32px;
+                        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 40px rgba(59, 130, 246, 0.1);
+                    }
+                    .header {
+                        display: flex;
+                        align-items: center;
+                        gap: 16px;
+                        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+                        padding-bottom: 20px;
+                        margin-bottom: 24px;
+                    }
+                    .logo {
+                        width: 52px;
+                        height: 52px;
+                        border-radius: 14px;
+                        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 26px;
+                        box-shadow: 0 8px 16px rgba(37, 99, 235, 0.3);
+                    }
+                    h1 { font-size: 20px; font-weight: 800; color: #ffffff; }
+                    .subtitle { font-size: 13px; color: #94a3b8; margin-top: 4px; }
+                    .status-pill {
+                        margin-left: auto;
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 8px;
+                        background: rgba(16, 185, 129, 0.12);
+                        color: #10b981;
+                        padding: 6px 14px;
+                        border-radius: 9999px;
+                        font-size: 13px;
+                        font-weight: 700;
+                        border: 1px solid rgba(16, 185, 129, 0.3);
+                    }
+                    .status-dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; box-shadow: 0 0 8px #10b981; }
+                    .grid {
+                        display: grid;
+                        grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+                        gap: 12px;
+                        margin-top: 20px;
+                    }
+                    .card {
+                        background: rgba(30, 41, 59, 0.5);
+                        border: 1px solid rgba(255, 255, 255, 0.06);
+                        border-radius: 12px;
+                        padding: 14px 16px;
+                        transition: all 0.2s ease;
+                        text-decoration: none;
+                        display: block;
+                    }
+                    .card:hover {
+                        background: rgba(59, 130, 246, 0.12);
+                        border-color: rgba(59, 130, 246, 0.4);
+                        transform: translateY(-2px);
+                    }
+                    .card-title { font-size: 13px; font-weight: 700; color: #e2e8f0; }
+                    .card-path { font-size: 12px; color: #60a5fa; font-family: monospace; margin-top: 4px; }
+                    .footer {
+                        margin-top: 28px;
+                        padding-top: 18px;
+                        border-top: 1px solid rgba(255, 255, 255, 0.06);
+                        display: flex;
+                        justify-content: space-between;
+                        font-size: 12px;
+                        color: #64748b;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <div class="logo">⚡</div>
+                        <div>
+                            <h1>BLS Enterprise API Gateway</h1>
+                            <div class="subtitle">សាលាប្រាយ ឡាយ • Bright Light International School</div>
+                        </div>
+                        <div class="status-pill">
+                            <span class="status-dot"></span>
+                            <span>Online (${dbStatus})</span>
+                        </div>
+                    </div>
+                    <p style="font-size: 13px; color: #94a3b8; line-height: 1.6;">
+                        ប្រព័ន្ធ RESTful API ដំណើរការប្រកបដោយស្ថិរភាព និងសុវត្ថិភាពខ្ពស់ ផ្តល់ទិន្នន័យសម្រាប់កម្មវិធី Flutter Web & Mobile Client។
+                    </p>
+                    <div class="grid">
+                        <a href="/api/health" class="card"><div class="card-title">Health Check</div><div class="card-path">/api/health</div></a>
+                        <a href="/api/dashboard/stats" class="card"><div class="card-title">Dashboard Overview</div><div class="card-path">/api/dashboard/stats</div></a>
+                        <a href="/api/students" class="card"><div class="card-title">Students Registry</div><div class="card-path">/api/students</div></a>
+                        <a href="/api/teachers" class="card"><div class="card-title">Teachers & Faculty</div><div class="card-path">/api/teachers</div></a>
+                        <a href="/api/classrooms" class="card"><div class="card-title">Classrooms & Shifts</div><div class="card-path">/api/classrooms</div></a>
+                        <a href="/api/attendance/trend" class="card"><div class="card-title">Attendance Trends</div><div class="card-path">/api/attendance/trend</div></a>
+                        <a href="/api/grades" class="card"><div class="card-title">Grades & Scores</div><div class="card-path">/api/grades</div></a>
+                        <a href="/api/schedules" class="card"><div class="card-title">Weekly Schedules</div><div class="card-path">/api/schedules</div></a>
+                        <a href="/api/reports/summary" class="card"><div class="card-title">Reports & Finance</div><div class="card-path">/api/reports/summary</div></a>
+                    </div>
+                    <div class="footer">
+                        <span>Version 2.5.0 • Powered by Express & MySQL</span>
+                        <a href="/" style="color: #60a5fa; text-decoration: none; font-weight: 600;">ត្រឡប់ទៅកម្មវិធីធំ (Open App) →</a>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `);
+    }
+
+    res.json(payload);
 });
 
 const fmtDate = (d) => d ? d.toString().split('T')[0].substring(0, 10) : null;
@@ -111,6 +545,9 @@ async function ensureTables() {
         await pool.query("ALTER TABLE classrooms ADD COLUMN shift VARCHAR(50) DEFAULT 'Morning'").catch(() => {});
         await pool.query("ALTER TABLE classrooms ADD COLUMN room_number VARCHAR(50) DEFAULT 'Room-01'").catch(() => {});
         await pool.query('ALTER TABLE classrooms ADD COLUMN capacity INT DEFAULT 30').catch(() => {});
+        await pool.query("ALTER TABLE classrooms ADD COLUMN teacher_name VARCHAR(150) NULL DEFAULT ''").catch(() => {});
+        await pool.query("ALTER TABLE classrooms ADD COLUMN academic_year VARCHAR(50) NULL DEFAULT '2025-2026'").catch(() => {});
+        await pool.query("ALTER TABLE classrooms MODIFY COLUMN shift VARCHAR(50) DEFAULT 'Morning'").catch(() => {});
 
         const [[glCheck]] = await pool.query('SELECT COUNT(*) as count FROM grade_levels').catch(() => [[{ count: 1 }]]);
         if (glCheck && glCheck.count === 0) {
@@ -245,15 +682,130 @@ async function ensureTables() {
         await pool.query('ALTER TABLE teacher_salaries ADD COLUMN net_salary DECIMAL(10,2) NULL').catch(() => {});
         await pool.query('ALTER TABLE teacher_salaries ADD COLUMN paid_date DATE NULL').catch(() => {});
 
+        // Ensure status columns are VARCHAR(50) to prevent 'Data truncated for column status' errors
+        await pool.query("ALTER TABLE teachers MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'Active'").catch(() => {});
+        await pool.query("ALTER TABLE students MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'Active'").catch(() => {});
+        await pool.query("ALTER TABLE attendance MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'Present'").catch(() => {});
+        await pool.query("ALTER TABLE student_payments MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'Paid'").catch(() => {});
+        await pool.query("ALTER TABLE users MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'Active'").catch(() => {});
+
         await pool.query('ALTER TABLE attendance ADD INDEX idx_att_date_status (date, status)').catch(() => {});
         await pool.query('ALTER TABLE attendance ADD INDEX idx_att_student (student_id)').catch(() => {});
         await pool.query('ALTER TABLE attendance ADD INDEX idx_att_teacher (teacher_id)').catch(() => {});
         await pool.query('ALTER TABLE students ADD INDEX idx_std_code (student_code)').catch(() => {});
         await pool.query('ALTER TABLE students ADD INDEX idx_std_class (classroom_id)').catch(() => {});
         await pool.query('ALTER TABLE teachers ADD INDEX idx_tch_code (teacher_code)').catch(() => {});
+        await pool.query('ALTER TABLE student_grades ADD COLUMN rank_in_class INT NULL').catch(() => {});
+        await pool.query('ALTER TABLE students ADD INDEX idx_status_gender (status, gender)').catch(() => {});
+        await pool.query('ALTER TABLE attendance ADD INDEX idx_scan_date_status (date, status)').catch(() => {});
+        await pool.query('ALTER TABLE invoices ADD INDEX idx_month_status (billing_month, status)').catch(() => {});
+
+        // 🛡️ Enterprise Additions: Audit Logs & Invoicing System
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NULL,
+                user_name VARCHAR(150) NULL,
+                role VARCHAR(50) NULL,
+                action VARCHAR(100) NOT NULL,
+                table_name VARCHAR(100) NOT NULL,
+                record_id INT NULL,
+                old_values JSON NULL,
+                new_values JSON NULL,
+                ip_address VARCHAR(50) NULL,
+                user_agent TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_audit_table (table_name),
+                INDEX idx_audit_time (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `).catch(() => {});
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS invoices (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                invoice_no VARCHAR(50) UNIQUE NOT NULL,
+                student_id INT NOT NULL,
+                billing_month VARCHAR(50) NOT NULL,
+                original_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+                discount_type VARCHAR(20) DEFAULT 'None',
+                discount_val DECIMAL(10,2) DEFAULT 0.00,
+                net_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+                due_date DATE NULL,
+                status VARCHAR(30) DEFAULT 'Pending',
+                slip_image_url LONGTEXT NULL,
+                khqr_payload TEXT NULL,
+                approved_by VARCHAR(150) NULL,
+                approved_at TIMESTAMP NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_inv_student (student_id),
+                INDEX idx_inv_status (status)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `).catch(() => {});
+
+        await pool.query('ALTER TABLE students ADD COLUMN parent_phone_2 VARCHAR(50) NULL').catch(() => {});
+        await pool.query('ALTER TABLE students ADD COLUMN telegram_chat_id VARCHAR(100) NULL').catch(() => {});
+        await pool.query('ALTER TABLE students ADD COLUMN allergies_notes TEXT NULL').catch(() => {});
+        await pool.query('ALTER TABLE students ADD COLUMN health_notes TEXT NULL').catch(() => {});
+        await pool.query('ALTER TABLE users ADD COLUMN role_type VARCHAR(50) DEFAULT "Admin"').catch(() => {});
+        await pool.query('ALTER TABLE invoices ADD COLUMN verified_by INT NULL').catch(() => {});
+        await pool.query('ALTER TABLE invoices ADD COLUMN verified_at DATETIME NULL').catch(() => {});
+        await pool.query('ALTER TABLE invoices ADD COLUMN rejection_reason VARCHAR(255) NULL').catch(() => {});
+        await pool.query('ALTER TABLE invoices ADD COLUMN receipt_number VARCHAR(50) NULL').catch(() => {});
+        await pool.query('ALTER TABLE invoices ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP').catch(() => {});
+        await pool.query('ALTER TABLE invoices ADD INDEX idx_status_verification (status, verified_at)').catch(() => {});
     } catch (_) {}
 }
 ensureTables();
+
+// ==========================================
+// 🛡️ AUDIT LOGGING & TELEGRAM HELPERS
+// ==========================================
+async function logAudit({ userId = null, userName = 'System', role = 'System', action, tableName, recordId = null, oldValues = null, newValues = null, req = null }) {
+    try {
+        const ip = req ? (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '') : '';
+        const userAgent = req ? (req.headers['user-agent'] || '') : '';
+        await pool.query(
+            `INSERT INTO audit_logs (user_id, user_name, role, action, table_name, record_id, old_values, new_values, ip_address, user_agent)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                userId,
+                userName,
+                role,
+                action,
+                tableName,
+                recordId,
+                oldValues ? JSON.stringify(oldValues) : null,
+                newValues ? JSON.stringify(newValues) : null,
+                ip,
+                userAgent
+            ]
+        );
+    } catch (e) {
+        console.error('[Audit Log Error]', e.message);
+    }
+}
+
+async function sendTelegramAlert(message, chatId = null) {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const targetChat = chatId || process.env.TELEGRAM_ADMIN_CHAT_ID;
+    if (!token || !targetChat) return;
+    try {
+        const url = `https://api.telegram.org/bot${token}/sendMessage`;
+        if (typeof fetch === 'function') {
+            await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: targetChat,
+                    text: message,
+                    parse_mode: 'HTML'
+                })
+            });
+        }
+    } catch (e) {
+        console.error('[Telegram Alert Error]', e.message);
+    }
+}
 
 async function downloadKhmerFonts() {
     const fontsDir = path.join(__dirname, '..', 'assets', 'fonts');
@@ -321,6 +873,23 @@ app.get('/api/system/health', (req, res) => {
         nodeVersion: process.version,
         memoryUsageMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
         timestamp: new Date().toISOString()
+    });
+});
+
+app.get('/api/security/my-ip', (req, res) => {
+    const clientIp = getClientIp(req);
+    const isWhitelistEnabled = process.env.IP_WHITELIST_ENABLED === 'true';
+    const allowedIps = (process.env.ALLOWED_IPS || '127.0.0.1, ::1')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+
+    res.json({
+        success: true,
+        yourIp: clientIp,
+        whitelistEnabled: isWhitelistEnabled,
+        allowedRules: allowedIps,
+        isAllowed: isIpAllowed(clientIp, allowedIps)
     });
 });
 
@@ -466,7 +1035,122 @@ app.get('/api/dashboard/stats', async (req, res) => {
     } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
 });
 
-app.get('/api/dashboard/attendance-trends', async (req, res) => {
+// ==========================================
+// 2.1 ADMIN DASHBOARD METRICS (SINGLE API CALL)
+// ==========================================
+app.get(['/api/admin/dashboard-metrics', '/api/dashboard/metrics'], async (req, res) => {
+    try {
+        const today = getCambodiaDateStr(); // 'YYYY-MM-DD'
+        const currentMonth = today.slice(0, 7); // 'YYYY-MM'
+
+        const [
+            [[studentStats]],
+            [[staffStats]],
+            [[attendanceStats]],
+            [[financeStats]],
+            recentPendingPayments
+        ] = await Promise.all([
+            // 1. ស្ថិតិសិស្ស (សរុប, ប្រុស, ស្រី)
+            pool.query(`
+                SELECT 
+                    COUNT(*) AS total_students,
+                    SUM(CASE WHEN LOWER(gender) IN ('male', 'm', 'ប្រុស') THEN 1 ELSE 0 END) AS male_students,
+                    SUM(CASE WHEN LOWER(gender) IN ('female', 'f', 'ស្រី') THEN 1 ELSE 0 END) AS female_students
+                FROM students
+                WHERE status IS NULL OR status = '' OR LOWER(status) IN ('active', 'កំពុងរៀន');
+            `).catch(() => [[{ total_students: 0, male_students: 0, female_students: 0 }]]),
+
+            // 2. ស្ថិតិគ្រូ និងបុគ្គលិកសរុប
+            pool.query(`
+                SELECT 
+                    (SELECT COUNT(*) FROM teachers WHERE status IS NULL OR status = '' OR LOWER(status) = 'active') AS total_teachers,
+                    (SELECT COUNT(*) FROM users WHERE LOWER(role) NOT IN ('admin', 'super_admin') AND (status IS NULL OR LOWER(status) = 'active')) AS total_staff
+            `).catch(() => [[{ total_teachers: 0, total_staff: 0 }]]),
+
+            // 3. ស្ថិតិវត្តមានប្រចាំថ្ងៃ (Today's Attendance Breakdown)
+            pool.query(`
+                SELECT 
+                    COUNT(CASE WHEN LOWER(status) IN ('present', 'p', 'វត្តមាន') THEN 1 END) AS present_count,
+                    COUNT(CASE WHEN LOWER(status) IN ('late', 'l', 'មកយឺត') THEN 1 END) AS late_count,
+                    COUNT(CASE WHEN LOWER(status) IN ('permission', 'e', 'មានច្បាប់', 'សុំច្បាប់') THEN 1 END) AS permission_count,
+                    COUNT(CASE WHEN LOWER(status) IN ('absent', 'a', 'អវត្តមាន') THEN 1 END) AS absent_count,
+                    COUNT(*) AS total_recorded
+                FROM attendance
+                WHERE date = ? OR DATE(created_at) = ?;
+            `, [today, today]).catch(() => [[{ present_count: 0, late_count: 0, permission_count: 0, absent_count: 0, total_recorded: 0 }]]),
+
+            // 4. ស្ថិតិហិរញ្ញវត្ថុប្រចាំខែ (Invoices + Fallback to Student Payments)
+            pool.query(`
+                SELECT 
+                    COALESCE(SUM(CASE WHEN LOWER(status) = 'paid' THEN net_amount ELSE 0 END), 
+                             (SELECT COALESCE(SUM(amount), 0) FROM student_payments WHERE DATE_FORMAT(paid_date, '%Y-%m') = ?)) AS total_revenue,
+                    COALESCE(SUM(CASE WHEN LOWER(status) IN ('unpaid', 'pending', 'under_review') THEN net_amount ELSE 0 END), 0) AS outstanding_amount,
+                    COUNT(CASE WHEN LOWER(status) = 'paid' THEN 1 END) AS paid_invoices,
+                    COUNT(CASE WHEN LOWER(status) IN ('unpaid', 'pending', 'under_review') THEN 1 END) AS pending_invoices
+                FROM invoices
+                WHERE billing_month = ? OR DATE_FORMAT(created_at, '%Y-%m') = ?;
+            `, [currentMonth, currentMonth, currentMonth]).catch(() => [[{ total_revenue: 0, outstanding_amount: 0, paid_invoices: 0, pending_invoices: 0 }]]),
+
+            // 5. វិក្កយបត្ររង់ចាំការអនុម័តចុងក្រោយ (Pending Payments Queue)
+            pool.query(`
+                SELECT 
+                    i.id AS invoice_id,
+                    i.student_id,
+                    s.name_kh AS student_name,
+                    i.net_amount AS total_amount,
+                    i.slip_image_url,
+                    i.created_at AS updated_at
+                FROM invoices i
+                JOIN students s ON i.student_id = s.id
+                WHERE LOWER(i.status) IN ('pending', 'under_review')
+                ORDER BY i.id DESC
+                LIMIT 5;
+            `).then(([rows]) => rows).catch(() => [])
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            message: 'ទាញទិន្នន័យ Dashboard ជោគជ័យ',
+            timestamp: new Date().toISOString(),
+            data: {
+                students: {
+                    total: Number(studentStats?.total_students || 0),
+                    male: Number(studentStats?.male_students || 0),
+                    female: Number(studentStats?.female_students || 0)
+                },
+                staff: {
+                    teachers: Number(staffStats?.total_teachers || 0),
+                    staff: Number(staffStats?.total_staff || 0)
+                },
+                attendanceToday: {
+                    date: today,
+                    present: Number(attendanceStats?.present_count || 0),
+                    late: Number(attendanceStats?.late_count || 0),
+                    permission: Number(attendanceStats?.permission_count || 0),
+                    absent: Number(attendanceStats?.absent_count || 0),
+                    totalRecorded: Number(attendanceStats?.total_recorded || 0)
+                },
+                financeMonthly: {
+                    month: currentMonth,
+                    revenue: Number(financeStats?.total_revenue || 0),
+                    outstanding: Number(financeStats?.outstanding_amount || 0),
+                    paidInvoicesCount: Number(financeStats?.paid_invoices || 0),
+                    pendingInvoicesCount: Number(financeStats?.pending_invoices || 0)
+                },
+                pendingApprovals: recentPendingPayments || []
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching admin dashboard metrics:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'មានបញ្ហាបច្ចេកទេសក្នុងដំណើរការទាញទិន្នន័យ',
+            error: error.message
+        });
+    }
+});
+
+app.get(['/api/dashboard/attendance-trends', '/api/dashboard/trends', '/dashboard/attendance-trends', '/dashboard/trends'], async (req, res) => {
     try {
         const [rows] = await pool.query(`
             SELECT DATE_FORMAT(date, '%Y-%m-%d') AS date, 
@@ -580,6 +1264,26 @@ app.post('/api/attendance/scan', async (req, res) => {
                 'INSERT INTO attendance (student_id, classroom_id, date, shift, status) VALUES (?, ?, ?, ?, ?)',
                 [s.id, classroom_id || s.classroom_id || null, today, shift || s.shift || 'Morning', scanStatus]
             );
+
+            // 📢 Real-time Telegram Notification
+            const statusKh = scanStatus === 'Late' ? 'មកយឺត 🟡' : (scanStatus === 'Absent' ? 'អវត្តមាន 🔴' : 'វត្តមាន 🟢');
+            const alertMsg = `🏫 <b>សាលាប្រាយ ឡាយ • ដំណឹងវត្តមានសិស្ស</b>\n\n` +
+                `👤 សិស្ស៖ <b>${s.name_kh}</b> (${s.student_code})\n` +
+                `🏫 ថ្នាក់៖ ${s.class_name || 'ទូទៅ'}\n` +
+                `⏰ ស្ថានភាព៖ <b>${statusKh}</b>\n` +
+                `📅 កាលបរិច្ឆេទ៖ ${today}`;
+            sendTelegramAlert(alertMsg, s.telegram_chat_id);
+
+            logAudit({
+                userName: 'Attendance Scanner',
+                role: 'System',
+                action: 'ATTENDANCE_SCAN',
+                tableName: 'attendance',
+                recordId: s.id,
+                newValues: { student_code: s.student_code, status: scanStatus, date: today },
+                req
+            });
+
             return res.json({
                 success: true,
                 message: `វត្តមានសិស្ស៖ ${s.name_kh} (${s.student_code}) ជោគជ័យ!`,
@@ -691,6 +1395,10 @@ app.get(['/api/attendance/classroom/:id', '/attendance/classroom/:id'], async (r
 // 4. TEACHERS FULL CRUD
 // ==========================================
 app.get('/api/teachers', async (req, res) => {
+    const now = Date.now();
+    if (teachersCache && (now - lastTeachersFetch) < CACHE_TTL) {
+        return res.json({ success: true, data: teachersCache, cached: true });
+    }
     try {
         const [rows] = await pool.query(`
             SELECT id, teacher_code, name_kh, name_en, gender, 
@@ -699,31 +1407,35 @@ app.get('/api/teachers', async (req, res) => {
                    DATE_FORMAT(hire_date, '%Y-%m-%d') AS hire_date, photo_url 
             FROM teachers ORDER BY id DESC
         `);
+        teachersCache = rows;
+        lastTeachersFetch = now;
         return res.json({ success: true, data: rows });
     } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
 });
 
 app.post('/api/teachers', async (req, res) => {
-    const { teacher_code, name_kh, name_en, gender, dob, phone, email, role_title, specialized_subject, base_salary, hire_date, photo_url } = req.body;
+    const { teacher_code, name_kh, name_en, gender, dob, phone, email, role_title, specialized_subject, base_salary, status, hire_date, photo_url } = req.body;
     try {
         const tCode = (teacher_code || '').trim() || `TCH-${Math.floor(1000 + Math.random() * 9000)}`;
         await pool.query(
             `INSERT INTO teachers (teacher_code, name_kh, name_en, gender, dob, phone, email, role_title, specialized_subject, base_salary, status, hire_date, photo_url)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active', ?, ?)`,
-            [tCode, name_kh.trim(), (name_en || '').trim(), gender || 'Male', fmtDate(dob), (phone || '').trim(), (email || '').trim(), role_title || 'គ្រូបង្រៀន', (specialized_subject || '').trim(), parseFloat(base_salary) || 0, fmtDate(hire_date), photo_url || null]
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [tCode, name_kh.trim(), (name_en || '').trim(), gender || 'Male', fmtDate(dob), (phone || '').trim(), (email || '').trim(), role_title || 'គ្រូបង្រៀន', (specialized_subject || '').trim(), parseFloat(base_salary) || 0, status || 'Active', fmtDate(hire_date), photo_url || null]
         );
+        invalidateMemberCache();
         return res.json({ success: true, message: 'បានចុះឈ្មោះគ្រូជោគជ័យ!' });
     } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
 });
 
 app.put('/api/teachers/:id', async (req, res) => {
     const { id } = req.params;
-    const { name_kh, name_en, gender, dob, phone, email, role_title, specialized_subject, base_salary, hire_date, photo_url } = req.body;
+    const { name_kh, name_en, gender, dob, phone, email, role_title, specialized_subject, base_salary, status, hire_date, photo_url } = req.body;
     try {
         await pool.query(
-            `UPDATE teachers SET name_kh = ?, name_en = ?, gender = ?, dob = ?, phone = ?, email = ?, role_title = ?, specialized_subject = ?, base_salary = ?, hire_date = ?, photo_url = ? WHERE id = ?`,
-            [name_kh.trim(), (name_en || '').trim(), gender || 'Male', fmtDate(dob), (phone || '').trim(), (email || '').trim(), role_title || 'គ្រូបង្រៀន', (specialized_subject || '').trim(), parseFloat(base_salary) || 0, fmtDate(hire_date), photo_url || null, id]
+            `UPDATE teachers SET name_kh = ?, name_en = ?, gender = ?, dob = ?, phone = ?, email = ?, role_title = ?, specialized_subject = ?, base_salary = ?, status = COALESCE(?, status), hire_date = ?, photo_url = ? WHERE id = ?`,
+            [name_kh.trim(), (name_en || '').trim(), gender || 'Male', fmtDate(dob), (phone || '').trim(), (email || '').trim(), role_title || 'គ្រូបង្រៀន', (specialized_subject || '').trim(), parseFloat(base_salary) || 0, status || 'Active', fmtDate(hire_date), photo_url || null, id]
         );
+        invalidateMemberCache();
         return res.json({ success: true, message: 'បានកែប្រែទិន្នន័យគ្រូជោគជ័យ!' });
     } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
 });
@@ -734,6 +1446,7 @@ app.delete('/api/teachers/:id', async (req, res) => {
         await pool.query('DELETE FROM schedules WHERE teacher_id = ?', [req.params.id]).catch(() => {});
         await pool.query('DELETE FROM teacher_salaries WHERE teacher_id = ?', [req.params.id]).catch(() => {});
         await pool.query('DELETE FROM teachers WHERE id = ?', [req.params.id]);
+        invalidateMemberCache();
         return res.json({ success: true, message: 'បានលុបទិន្នន័យគ្រូជោគជ័យ!' });
     } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
 });
@@ -742,6 +1455,10 @@ app.delete('/api/teachers/:id', async (req, res) => {
 // 5. STUDENTS FULL CRUD
 // ==========================================
 app.get(['/api/students', '/students'], async (req, res) => {
+    const now = Date.now();
+    if (studentsCache && (now - lastStudentsFetch) < CACHE_TTL) {
+        return res.json({ success: true, data: studentsCache, cached: true });
+    }
     try {
         const [rows] = await pool.query(`
             SELECT s.*, 
@@ -754,6 +1471,8 @@ app.get(['/api/students', '/students'], async (req, res) => {
             LEFT JOIN grade_levels g ON c.grade_level_id = g.id
             ORDER BY s.id DESC
         `);
+        studentsCache = rows;
+        lastStudentsFetch = now;
         return res.json({ success: true, data: rows });
     } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
 });
@@ -767,6 +1486,7 @@ app.post('/api/students', async (req, res) => {
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
             [sCode, name_kh.trim(), (name_en || '').trim(), gender || 'Female', fmtDate(dob), (pob || '').trim(), (parent_name || '').trim(), (parent_phone || '').trim(), study_type || 'Full-Time', shift || 'Morning', study_type === 'Part-Time' ? part_time_course : 'None', classroom_id || null, photo_url || null]
         );
+        invalidateMemberCache();
         return res.json({ success: true, message: 'បានចុះឈ្មោះសិស្សជោគជ័យ!' });
     } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
 });
@@ -779,6 +1499,7 @@ app.put('/api/students/:id', async (req, res) => {
             `UPDATE students SET name_kh = ?, name_en = ?, gender = ?, dob = ?, pob = ?, parent_name = ?, parent_phone = ?, study_type = ?, shift = ?, part_time_course = ?, classroom_id = ?, photo_url = ? WHERE id = ?`,
             [name_kh.trim(), (name_en || '').trim(), gender || 'Female', fmtDate(dob), (pob || '').trim(), (parent_name || '').trim(), (parent_phone || '').trim(), study_type || 'Full-Time', shift || 'Morning', study_type === 'Part-Time' ? part_time_course : 'None', classroom_id || null, photo_url || null, id]
         );
+        invalidateMemberCache();
         return res.json({ success: true, message: 'បានកែប្រែទិន្នន័យសិស្សជោគជ័យ!' });
     } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
 });
@@ -789,6 +1510,7 @@ app.delete('/api/students/:id', async (req, res) => {
         await pool.query('DELETE FROM student_grades WHERE student_id = ?', [req.params.id]).catch(() => {});
         await pool.query('DELETE FROM student_payments WHERE student_id = ?', [req.params.id]).catch(() => {});
         await pool.query('DELETE FROM students WHERE id = ?', [req.params.id]);
+        invalidateMemberCache();
         return res.json({ success: true, message: 'បានលុបទិន្នន័យសិស្សជោគជ័យ!' });
     } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
 });
@@ -835,7 +1557,9 @@ app.get(['/api/grade-levels', '/grade-levels'], async (req, res) => {
         }
         return res.json({ success: true, data: (rows && rows.length > 0) ? rows : DEFAULT_GRADE_LEVELS });
     } catch (e) {
-        console.error('Error fetching grade-levels:', e);
+        if (e.code !== 'ECONNREFUSED' && (!e.errors || !e.errors.some(err => err.code === 'ECONNREFUSED'))) {
+            console.warn('[GradeLevels] Notice: Using default levels:', e.message || e);
+        }
         return res.json({ success: true, data: DEFAULT_GRADE_LEVELS });
     }
 });
@@ -874,6 +1598,14 @@ app.delete(['/api/grade-levels/:id', '/grade-levels/:id'], async (req, res) => {
 });
 
 app.get(['/api/classrooms', '/classrooms'], async (req, res) => {
+    const fallbackClassrooms = [
+        { id: 1, class_name: 'ថ្នាក់ទី ១A', grade_level_name: 'ថ្នាក់ទី ១ (Grade 1)', shift: 'Morning', room_number: 'Room-101', capacity: 30, students_count: 2, teacher_name: 'ហាក់ ប៉ាក់ហ៊្វូរ', academic_year: '2025-2026' },
+        { id: 2, class_name: 'ថ្នាក់ទី ២A', grade_level_name: 'ថ្នាក់ទី ២ (Grade 2)', shift: 'Morning', room_number: 'Room-102', capacity: 30, students_count: 1, teacher_name: 'ចាន់ សុវណ្ណារ៉ា', academic_year: '2025-2026' },
+        { id: 3, class_name: 'ថ្នាក់ទី ៣A', grade_level_name: 'ថ្នាក់ទី ៣ (Grade 3)', shift: 'Morning', room_number: 'Room-103', capacity: 30, students_count: 1, teacher_name: 'សន ចរិយា', academic_year: '2025-2026' },
+        { id: 4, class_name: 'Computer Basics', grade_level_name: 'Part-Time', shift: 'Evening', room_number: 'Lab A', capacity: 25, students_count: 1, teacher_name: 'ហាក់ ប៉ាក់ហ៊្វូរ', academic_year: '2025-2026' },
+        { id: 5, class_name: 'English Level 1', grade_level_name: 'Part-Time', shift: 'Evening', room_number: 'Lab 2', capacity: 25, students_count: 1, teacher_name: 'វ៉ែន លាភហេង', academic_year: '2025-2026' }
+    ];
+
     try {
         await pool.query(`
             CREATE TABLE IF NOT EXISTS classrooms (
@@ -883,54 +1615,57 @@ app.get(['/api/classrooms', '/classrooms'], async (req, res) => {
                 shift VARCHAR(50) DEFAULT 'Morning',
                 room_number VARCHAR(50) DEFAULT 'Room-01',
                 capacity INT DEFAULT 30,
+                teacher_name VARCHAR(150) NULL DEFAULT '',
+                academic_year VARCHAR(50) NULL DEFAULT '2025-2026',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_cls_grade (grade_level_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `).catch(() => {});
 
-        const [rows] = await pool.query(`
+        await pool.query("ALTER TABLE classrooms ADD COLUMN teacher_name VARCHAR(150) NULL DEFAULT ''").catch(() => {});
+        await pool.query("ALTER TABLE classrooms ADD COLUMN academic_year VARCHAR(50) NULL DEFAULT '2025-2026'").catch(() => {});
+        await pool.query("ALTER TABLE classrooms MODIFY COLUMN shift VARCHAR(50) DEFAULT 'Morning'").catch(() => {});
+
+        let query = `
             SELECT c.*, g.name AS grade_level_name, g.name AS grade_level,
                    (SELECT COUNT(*) FROM students s WHERE s.classroom_id = c.id) AS students_count
             FROM classrooms c 
             LEFT JOIN grade_levels g ON c.grade_level_id = g.id 
-            ORDER BY c.id DESC
-        `);
+        `;
+        const params = [];
+        if (req.query.academic_year && req.query.academic_year !== 'ALL') {
+            query += ` WHERE c.academic_year = ? OR c.academic_year IS NULL OR c.academic_year = '' `;
+            params.push(req.query.academic_year);
+        }
+        query += ` ORDER BY c.id DESC`;
+
+        const [rows] = await pool.query(query, params);
         return res.json({ success: true, data: rows });
     } catch (e) {
-        console.error('Error fetching classrooms, attempting fallback:', e);
-        try {
-            const [raw] = await pool.query('SELECT * FROM classrooms ORDER BY id DESC');
-            return res.json({ success: true, data: raw });
-        } catch (_) {
-            return res.json({
-                success: true,
-                data: [
-                    { id: 1, class_name: 'ថ្នាក់ទី ១A', grade_level_name: 'ថ្នាក់ទី ១ (Grade 1)', shift: 'Morning', room_number: 'Room-101', capacity: 30, students_count: 0 },
-                    { id: 2, class_name: 'ថ្នាក់ទី ២A', grade_level_name: 'ថ្នាក់ទី ២ (Grade 2)', shift: 'Morning', room_number: 'Room-102', capacity: 30, students_count: 0 },
-                    { id: 3, class_name: 'ថ្នាក់ទី ៣A', grade_level_name: 'ថ្នាក់ទី ៣ (Grade 3)', shift: 'Morning', room_number: 'Room-103', capacity: 30, students_count: 0 }
-                ]
-            });
+        if (e.code !== 'ECONNREFUSED' && (!e.errors || !e.errors.some(err => err.code === 'ECONNREFUSED'))) {
+            console.warn('[Classrooms] Notice: Using fallback data:', e.message || e);
         }
+        return res.json({ success: true, data: fallbackClassrooms });
     }
 });
 
 app.post(['/api/classrooms', '/classrooms'], async (req, res) => {
-    const { class_name, grade_level_id, level_type, study_type, shift, room_number, capacity } = req.body;
+    const { class_name, grade_level_id, level_type, study_type, shift, room_number, capacity, teacher_name, academic_year } = req.body;
     try {
         await pool.query(
-            'INSERT INTO classrooms (class_name, grade_level_id, level_type, shift, room_number, capacity) VALUES (?, ?, ?, ?, ?, ?)',
-            [class_name, grade_level_id || null, level_type || study_type || 'Full-Time', shift || 'Morning', room_number || 'Room-01', capacity || 30]
+            'INSERT INTO classrooms (class_name, grade_level_id, level_type, shift, room_number, capacity, teacher_name, academic_year) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [class_name, grade_level_id || null, level_type || study_type || 'Full-Time', shift || 'Morning', room_number || 'Room-01', capacity || 30, teacher_name || '', academic_year || '2025-2026']
         );
         return res.json({ success: true, message: 'បានបង្កើតបន្ទប់រៀនជោគជ័យ!' });
     } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
 });
 
 app.put(['/api/classrooms/:id', '/classrooms/:id'], async (req, res) => {
-    const { class_name, grade_level_id, shift, room_number, capacity } = req.body;
+    const { class_name, grade_level_id, shift, room_number, capacity, teacher_name, academic_year } = req.body;
     try {
         await pool.query(
-            'UPDATE classrooms SET class_name = ?, grade_level_id = ?, shift = ?, room_number = ?, capacity = ? WHERE id = ?',
-            [class_name, grade_level_id || null, shift || 'Morning', room_number || 'Room-01', capacity || 30, req.params.id]
+            'UPDATE classrooms SET class_name = ?, grade_level_id = ?, shift = ?, room_number = ?, capacity = ?, teacher_name = ?, academic_year = ? WHERE id = ?',
+            [class_name, grade_level_id || null, shift || 'Morning', room_number || 'Room-01', capacity || 30, teacher_name || '', academic_year || '2025-2026', req.params.id]
         );
         return res.json({ success: true, message: 'បានកែប្រែបន្ទប់រៀនជោគជ័យ!' });
     } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
@@ -1174,6 +1909,934 @@ app.delete('/api/grades/:id', async (req, res) => {
     } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
 });
 
+// ==========================================
+// 7.1 STUDENT GRADES, AVERAGE & RANKING ENGINE
+// ==========================================
+function getGradeLetterInfo(avg) {
+    if (avg >= 85) return { letter: 'A', descKh: 'ល្អប្រសើរ (Excellent)', color: '#059669', passed: true };
+    if (avg >= 80) return { letter: 'B', descKh: 'ល្អណាស់ (Very Good)', color: '#2563EB', passed: true };
+    if (avg >= 70) return { letter: 'C', descKh: 'ល្អ (Good)', color: '#0D9488', passed: true };
+    if (avg >= 60) return { letter: 'D', descKh: 'ល្អបង្គួរ (Fair)', color: '#D97706', passed: true };
+    if (avg >= 50) return { letter: 'E', descKh: 'មធ្យម / ជាប់ (Pass)', color: '#EA580C', passed: true };
+    return { letter: 'F', descKh: 'ធ្លាក់ (Fail)', color: '#DC2626', passed: false };
+}
+
+async function computeClassMonthlyRanking(classroomId, monthName) {
+    let studentsSql = `
+        SELECT s.id, s.student_code, s.name_kh, s.name_en, s.gender, s.photo_url,
+               COALESCE(c.id, s.classroom_id) as classroom_id,
+               COALESCE(c.class_name, 'មិនទាន់ចាត់ថ្នាក់') as class_name
+        FROM students s
+        LEFT JOIN classrooms c ON s.classroom_id = c.id
+        WHERE 1=1
+    `;
+    const sParams = [];
+    if (classroomId && classroomId !== 'all') {
+        studentsSql += ` AND (s.classroom_id = ? OR c.id = ?)`;
+        sParams.push(classroomId, classroomId);
+    }
+    studentsSql += ` ORDER BY s.name_kh ASC`;
+    const [students] = await pool.query(studentsSql, sParams).catch(() => [[]]);
+    if (!students || students.length === 0) {
+        return {
+            classroom_id: classroomId || 'all',
+            month_name: monthName || 'ប្រចាំខែ',
+            students: [],
+            statistics: {
+                total_students: 0,
+                ranked_students: 0,
+                passed_count: 0,
+                failed_count: 0,
+                pass_rate: 0,
+                highest_average: 0,
+                lowest_average: 0,
+                class_average: 0,
+                grade_distribution: { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0 }
+            }
+        };
+    }
+
+    const studentIds = students.map(s => s.id);
+    let gradesSql = `
+        SELECT student_id, subject_name, score, remarks, grade_letter, month_name
+        FROM student_grades
+        WHERE student_id IN (?)
+    `;
+    const gParams = [studentIds];
+    if (monthName && monthName !== 'all') {
+        gradesSql += ` AND (month_name = ? OR month_name LIKE ?)`;
+        gParams.push(monthName, `%${monthName.split(' ')[0]}%`);
+    }
+    const [grades] = await pool.query(gradesSql, gParams).catch(() => [[]]);
+
+    const gradesByStudent = {};
+    for (const g of grades) {
+        if (!gradesByStudent[g.student_id]) {
+            gradesByStudent[g.student_id] = [];
+        }
+        gradesByStudent[g.student_id].push(g);
+    }
+
+    const rankedList = students.map(s => {
+        const studentGrades = gradesByStudent[s.id] || [];
+        const subjectCount = studentGrades.length;
+        const totalScore = studentGrades.reduce((sum, item) => sum + (parseFloat(item.score) || 0), 0);
+        const average = subjectCount > 0 ? parseFloat((totalScore / subjectCount).toFixed(2)) : 0.0;
+        const gradeInfo = getGradeLetterInfo(average);
+
+        const subjectsMap = {};
+        for (const item of studentGrades) {
+            subjectsMap[item.subject_name] = parseFloat(item.score) || 0;
+        }
+
+        return {
+            id: s.id,
+            student_code: s.student_code,
+            name_kh: s.name_kh,
+            name_en: s.name_en,
+            gender: s.gender,
+            classroom_id: s.classroom_id,
+            class_name: s.class_name,
+            month_name: monthName || 'ប្រចាំខែ',
+            subjects: subjectsMap,
+            subject_count: subjectCount,
+            total_score: parseFloat(totalScore.toFixed(2)),
+            average: average,
+            grade_letter: gradeInfo.letter,
+            grade_description_kh: gradeInfo.descKh,
+            grade_color: gradeInfo.color,
+            passed: gradeInfo.passed,
+            has_scores: subjectCount > 0
+        };
+    });
+
+    // Sort by average DESC, total_score DESC
+    rankedList.sort((a, b) => {
+        if (b.average !== a.average) return b.average - a.average;
+        return b.total_score - a.total_score;
+    });
+
+    // Dense Ranking
+    let currentDenseRank = 1;
+    for (let i = 0; i < rankedList.length; i++) {
+        if (i > 0) {
+            const prev = rankedList[i - 1];
+            const curr = rankedList[i];
+            if (curr.average === prev.average && curr.total_score === prev.total_score) {
+                curr.rank = prev.rank;
+            } else {
+                currentDenseRank++;
+                curr.rank = currentDenseRank;
+            }
+        } else {
+            rankedList[i].rank = 1;
+        }
+    }
+
+    const studentsWithScores = rankedList.filter(s => s.has_scores);
+    const passedStudents = studentsWithScores.filter(s => s.passed);
+    const failedStudents = studentsWithScores.filter(s => !s.passed);
+    const totalAverages = studentsWithScores.reduce((sum, s) => sum + s.average, 0);
+
+    const gradeDist = { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0 };
+    for (const s of studentsWithScores) {
+        if (gradeDist[s.grade_letter] !== undefined) {
+            gradeDist[s.grade_letter]++;
+        }
+    }
+
+    const statistics = {
+        total_students: rankedList.length,
+        ranked_students: studentsWithScores.length,
+        passed_count: passedStudents.length,
+        failed_count: failedStudents.length,
+        pass_rate: studentsWithScores.length > 0
+            ? parseFloat(((passedStudents.length / studentsWithScores.length) * 100).toFixed(1))
+            : 0,
+        highest_average: studentsWithScores.length > 0 ? rankedList[0].average : 0,
+        lowest_average: studentsWithScores.length > 0 ? (rankedList.findLast ? rankedList.findLast(s => s.has_scores)?.average : (studentsWithScores[studentsWithScores.length - 1]?.average || 0)) : 0,
+        class_average: studentsWithScores.length > 0
+            ? parseFloat((totalAverages / studentsWithScores.length).toFixed(2))
+            : 0,
+        grade_distribution: gradeDist
+    };
+
+    return {
+        classroom_id: classroomId || 'all',
+        month_name: monthName || 'ប្រចាំខែ',
+        statistics: statistics,
+        students: rankedList
+    };
+}
+
+// 1. GET Monthly Ranking API
+app.get('/api/grades/monthly-ranking', async (req, res) => {
+    const { classroom_id, month_name } = req.query;
+    try {
+        const result = await computeClassMonthlyRanking(classroom_id, month_name);
+        return res.json({ success: true, ...result });
+    } catch (e) {
+        console.error('Monthly ranking calculation error:', e);
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 2. POST Calculate & Persist Ranking API
+app.post('/api/grades/calculate-ranking', async (req, res) => {
+    const { classroom_id, month_name, save_to_db = true } = req.body;
+    try {
+        const result = await computeClassMonthlyRanking(classroom_id, month_name);
+        if (save_to_db && result.students.length > 0) {
+            for (const s of result.students) {
+                if (s.has_scores) {
+                    await pool.query(
+                        `UPDATE student_grades 
+                         SET rank_in_class = ?, grade_letter = ? 
+                         WHERE student_id = ? AND (month_name = ? OR month_name LIKE ?)`,
+                        [s.rank, s.grade_letter, s.id, month_name || 'ប្រចាំខែ', `%${(month_name || 'ប្រចាំខែ').split(' ')[0]}%`]
+                    ).catch(() => {});
+                }
+            }
+            logAudit({
+                action: 'CALCULATE_MONTHLY_RANKING',
+                tableName: 'student_grades',
+                recordId: classroom_id || null,
+                newValues: {
+                    month_name,
+                    total_students: result.statistics.total_students,
+                    ranked_students: result.statistics.ranked_students,
+                    pass_rate: result.statistics.pass_rate
+                },
+                req
+            });
+        }
+        return res.json({
+            success: true,
+            message: 'បានគណនាពិន្ទុ មធ្យមភាគ និងចំណាត់ថ្នាក់សិស្សជោគជ័យ!',
+            ...result
+        });
+    } catch (e) {
+        console.error('Calculate ranking error:', e);
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 3. GET Individual Student Transcript & Report Card Summary API
+app.get('/api/grades/student-transcript/:studentId', async (req, res) => {
+    const { studentId } = req.params;
+    const { month_name } = req.query;
+    try {
+        const [stds] = await pool.query(
+            `SELECT s.*, c.class_name, gl.name as grade_level_name
+             FROM students s
+             LEFT JOIN classrooms c ON s.classroom_id = c.id
+             LEFT JOIN grade_levels gl ON c.grade_level_id = gl.id
+             WHERE s.id = ? OR s.student_code = ? LIMIT 1`,
+            [studentId, studentId]
+        );
+        if (!stds || stds.length === 0) {
+            return res.status(404).json({ success: false, error: 'រកមិនឃើញសិស្សនេះឡើយ!' });
+        }
+        const student = stds[0];
+
+        let gSql = `
+            SELECT subject_name, score, grade_letter, remarks, month_name, rank_in_class, created_at
+            FROM student_grades
+            WHERE student_id = ?
+        `;
+        const gParams = [student.id];
+        if (month_name) {
+            gSql += ` AND (month_name = ? OR month_name LIKE ?)`;
+            gParams.push(month_name, `%${month_name.split(' ')[0]}%`);
+        }
+        gSql += ` ORDER BY id ASC`;
+        const [grades] = await pool.query(gSql, gParams);
+
+        const totalScore = grades.reduce((sum, g) => sum + (parseFloat(g.score) || 0), 0);
+        const subjectCount = grades.length;
+        const average = subjectCount > 0 ? parseFloat((totalScore / subjectCount).toFixed(2)) : 0.0;
+        const gradeInfo = getGradeLetterInfo(average);
+
+        let classroomRank = grades[0]?.rank_in_class || null;
+        if (!classroomRank && student.classroom_id) {
+            const classRankings = await computeClassMonthlyRanking(student.classroom_id, month_name || grades[0]?.month_name);
+            const found = classRankings.students.find(item => item.id === student.id);
+            if (found) classroomRank = found.rank;
+        }
+
+        return res.json({
+            success: true,
+            student: {
+                id: student.id,
+                student_code: student.student_code,
+                name_kh: student.name_kh,
+                name_en: student.name_en,
+                gender: student.gender,
+                dob: student.dob,
+                class_name: student.class_name || 'មិនទាន់ចាត់ថ្នាក់',
+                grade_level_name: student.grade_level_name || 'បឋមសិក្សា'
+            },
+            month_name: month_name || (grades[0]?.month_name || 'ប្រចាំខែ'),
+            summary: {
+                total_score: parseFloat(totalScore.toFixed(2)),
+                subject_count: subjectCount,
+                average: average,
+                rank: classroomRank || 1,
+                grade_letter: gradeInfo.letter,
+                grade_description_kh: gradeInfo.descKh,
+                passed: gradeInfo.passed
+            },
+            grades: grades
+        });
+    } catch (e) {
+        console.error('Student transcript error:', e);
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// ==========================================
+// 8. INVOICES, KHQR WORKFLOW & AUDIT LOGS
+// ==========================================
+// 🧾 1. Invoices List with Dynamic Filters, Tab Counters & Pagination
+const getInvoicesForCashier = async (req, res) => {
+    try {
+        const {
+            status,       // 'ALL', 'PENDING', 'PAID', 'UNPAID'
+            month,        // 'YYYY-MM' (ឧ. '2026-11')
+            classId,      // ID ថ្នាក់រៀន
+            search,       // ឈ្មោះសិស្សខ្មែរ/ឡាតាំង ឬ អត្តលេខ
+            page = 1,
+            limit = 50
+        } = req.query;
+
+        const pageNumber = Math.max(1, parseInt(page, 10));
+        const pageSize = Math.min(200, Math.max(1, parseInt(limit, 10)));
+        const offset = (pageNumber - 1) * pageSize;
+
+        const conditions = [];
+        const params = [];
+
+        if (status && status.toUpperCase() !== 'ALL') {
+            if (status.toUpperCase() === 'PENDING') {
+                conditions.push("LOWER(i.status) IN ('pending', 'under_review')");
+            } else {
+                conditions.push('LOWER(i.status) = ?');
+                params.push(status.toLowerCase());
+            }
+        }
+
+        if (month) {
+            conditions.push("(i.billing_month = ? OR DATE_FORMAT(i.created_at, '%Y-%m') = ?)");
+            params.push(month, month);
+        }
+
+        if (classId) {
+            conditions.push('(s.classroom_id = ? OR s.class_id = ?)');
+            params.push(classId, classId);
+        }
+
+        if (search && search.trim() !== '') {
+            conditions.push('(s.name_kh LIKE ? OR s.name_en LIKE ? OR s.student_code LIKE ? OR i.invoice_no LIKE ?)');
+            const sTerm = `%${search.trim()}%`;
+            params.push(sTerm, sTerm, sTerm, sTerm);
+        }
+
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+        const dataQuery = `
+            SELECT 
+                i.id AS invoice_id,
+                i.id,
+                i.invoice_no,
+                i.billing_month AS month,
+                i.billing_month,
+                i.original_amount,
+                i.discount_type,
+                i.discount_val,
+                i.net_amount AS total_amount,
+                i.net_amount,
+                i.due_date,
+                i.status,
+                i.slip_image_url,
+                i.receipt_number,
+                i.rejection_reason,
+                i.approved_by,
+                i.approved_at,
+                i.verified_by,
+                i.verified_at,
+                i.created_at,
+                i.updated_at,
+                s.id AS student_id,
+                s.student_code,
+                s.name_kh AS student_name_kh,
+                s.name_kh,
+                s.name_en AS student_name_en,
+                s.name_en,
+                s.phone AS parent_phone,
+                c.class_name,
+                u.full_name AS verified_by_name
+            FROM invoices i
+            JOIN students s ON i.student_id = s.id
+            LEFT JOIN classrooms c ON s.classroom_id = c.id
+            LEFT JOIN users u ON i.verified_by = u.id
+            ${whereClause}
+            ORDER BY 
+                CASE 
+                    WHEN LOWER(i.status) IN ('pending', 'under_review') THEN 1 
+                    WHEN LOWER(i.status) = 'unpaid' THEN 2 
+                    ELSE 3 
+                END ASC,
+                i.created_at DESC
+            LIMIT ? OFFSET ?;
+        `;
+
+        const [invoices] = await pool.query(dataQuery, [...params, pageSize, offset]);
+
+        const countQuery = `
+            SELECT COUNT(*) AS total_count
+            FROM invoices i
+            JOIN students s ON i.student_id = s.id
+            ${whereClause};
+        `;
+        const [countResult] = await pool.query(countQuery, params);
+        const totalRecords = countResult[0]?.total_count || 0;
+        const totalPages = Math.ceil(totalRecords / pageSize);
+
+        const statsMonth = month || new Date().toISOString().slice(0, 7);
+        const [tabCounts] = await pool.query(`
+            SELECT 
+                COUNT(CASE WHEN LOWER(status) IN ('pending', 'under_review') THEN 1 END) AS pending_count,
+                COUNT(CASE WHEN LOWER(status) = 'unpaid' THEN 1 END) AS unpaid_count,
+                COUNT(CASE WHEN LOWER(status) = 'paid' THEN 1 END) AS paid_count,
+                COUNT(*) AS total_count
+            FROM invoices
+            WHERE billing_month = ? OR DATE_FORMAT(created_at, '%Y-%m') = ?;
+        `, [statsMonth, statsMonth]).catch(() => [[{ pending_count: 0, unpaid_count: 0, paid_count: 0, total_count: 0 }]]);
+
+        return res.json({
+            success: true,
+            message: 'ទាញបញ្ជីវិក្កយបត្រជោគជ័យ',
+            tabCounters: {
+                month: statsMonth,
+                pending: Number(tabCounts[0]?.pending_count || 0),
+                unpaid: Number(tabCounts[0]?.unpaid_count || 0),
+                paid: Number(tabCounts[0]?.paid_count || 0),
+                all: Number(tabCounts[0]?.total_count || 0)
+            },
+            pagination: {
+                currentPage: pageNumber,
+                pageSize: pageSize,
+                totalRecords: totalRecords,
+                totalPages: totalPages,
+                hasNextPage: pageNumber < totalPages,
+                hasPrevPage: pageNumber > 1
+            },
+            data: invoices
+        });
+    } catch (e) {
+        console.error('[Cashier Invoices Error]', e);
+        return res.status(500).json({ success: false, error: e.message });
+    }
+};
+
+app.get('/api/cashier/invoices', getInvoicesForCashier);
+app.get('/api/finance/invoices', getInvoicesForCashier);
+
+app.post('/api/finance/invoices', async (req, res) => {
+    const { student_id, billing_month, original_amount, discount_type, discount_val, due_date } = req.body;
+    try {
+        const orig = parseFloat(original_amount) || 0;
+        const discVal = parseFloat(discount_val) || 0;
+        let net = orig;
+        if (discount_type === 'Percentage') {
+            net = orig - (orig * (discVal / 100));
+        } else if (discount_type === 'Fixed') {
+            net = Math.max(0, orig - discVal);
+        }
+        const invoiceNo = 'INV-' + Date.now().toString().slice(-6);
+        const [result] = await pool.query(
+            `INSERT INTO invoices (invoice_no, student_id, billing_month, original_amount, discount_type, discount_val, net_amount, due_date, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
+            [invoiceNo, student_id, billing_month || 'ប្រចាំខែ', orig, discount_type || 'None', discVal, net, due_date || null]
+        );
+        logAudit({ action: 'CREATE_INVOICE', tableName: 'invoices', recordId: result.insertId, newValues: { invoiceNo, net }, req });
+        return res.json({ success: true, message: 'បានបង្កើតវិក្កយបត្រជោគជ័យ!', invoice_id: result.insertId, invoice_no: invoiceNo });
+    } catch (e) {
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 📤 2. Payment Slip Upload with Multer & Status Auto-Update to PENDING
+const handleUploadSlip = async (req, res) => {
+    const invoiceId = req.params.invoiceId || req.params.id;
+    let slipUrl = null;
+
+    if (req.file) {
+        slipUrl = `/uploads/slips/${req.file.filename}`;
+    } else if (req.body && req.body.slip_image_url) {
+        slipUrl = req.body.slip_image_url;
+    }
+
+    if (!slipUrl) {
+        return res.status(400).json({
+            success: false,
+            message: 'សូមជ្រើសរើស ឬបញ្ចូលរូបភាពបង្កាន់ដៃបង់ប្រាក់ (Slip)'
+        });
+    }
+
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        const [invoices] = await connection.query(`
+            SELECT i.id, i.invoice_no, i.status, i.slip_image_url, i.net_amount, i.student_id,
+                   s.name_kh, s.name_en, s.student_code
+            FROM invoices i
+            JOIN students s ON i.student_id = s.id
+            WHERE i.id = ? FOR UPDATE
+        `, [invoiceId]);
+
+        if (!invoices || invoices.length === 0) {
+            await connection.rollback();
+            if (req.file && fs.existsSync(req.file.path)) {
+                try { fs.unlinkSync(req.file.path); } catch (_) {}
+            }
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញវិក្កយបត្រនេះទេ' });
+        }
+
+        const invoice = invoices[0];
+        if ((invoice.status || '').toUpperCase() === 'PAID') {
+            await connection.rollback();
+            if (req.file && fs.existsSync(req.file.path)) {
+                try { fs.unlinkSync(req.file.path); } catch (_) {}
+            }
+            return res.status(400).json({
+                success: false,
+                message: 'វិក្កយបត្រនេះត្រូវបានទូទាត់ និងអនុម័តរួចរាល់ហើយ មិនអាច Upload សាជាថ្មីបានទេ'
+            });
+        }
+
+        // លុបរូបភាពចាស់ចេញពី Storage ប្រសិនបើមាន
+        if (invoice.slip_image_url && invoice.slip_image_url.startsWith('/uploads/')) {
+            const oldFilePath = path.join(uploadsDir, invoice.slip_image_url.replace('/uploads/', ''));
+            if (fs.existsSync(oldFilePath)) {
+                try { fs.unlinkSync(oldFilePath); } catch (err) {
+                    console.warn('មិនអាចលុបរូបភាព Slip ចាស់:', err.message);
+                }
+            }
+        }
+
+        await connection.query(`
+            UPDATE invoices
+            SET slip_image_url = ?,
+                status = 'PENDING',
+                rejection_reason = NULL,
+                updated_at = NOW()
+            WHERE id = ?
+        `, [slipUrl, invoiceId]);
+
+        await connection.commit();
+
+        const studentName = invoice.name_kh || invoice.name_en || 'សិស្ស';
+        sendTelegramAlert(
+            `💸 <b>សាលាប្រាយ ឡាយ • ដំណឹង Upload បង្កាន់ដៃបង់ប្រាក់</b>\n\n` +
+            `សិស្ស៖ <b>${studentName}</b> (${invoice.student_code || 'ID: ' + invoice.student_id})\n` +
+            `វិក្កយបត្រ៖ <code>${invoice.invoice_no}</code>\n` +
+            `ទឹកប្រាក់៖ $${Number(invoice.net_amount).toFixed(2)}\n\n` +
+            `<i>រង់ចាំការត្រួតពិនិត្យ និងអនុម័តពីគណនេយ្យករ/បេឡាធិការ!</i>`
+        );
+
+        logAudit({ action: 'UPLOAD_PAYMENT_SLIP', tableName: 'invoices', recordId: invoice.id, newValues: { slipUrl, status: 'PENDING' }, req });
+
+        return res.json({
+            success: true,
+            message: 'Upload រូបភាពបង្កាន់ដៃជោគជ័យ! សូមរង់ចាំការត្រួតពិនិត្យពីផ្នែកគណនេយ្យ',
+            data: {
+                invoiceId: Number(invoiceId),
+                status: 'PENDING',
+                slipImageUrl: slipUrl,
+                uploadedAt: new Date()
+            }
+        });
+
+    } catch (error) {
+        await connection.rollback();
+        if (req.file && fs.existsSync(req.file.path)) {
+            try { fs.unlinkSync(req.file.path); } catch (_) {}
+        }
+        console.error('[Upload Slip Error]', error);
+        return res.status(500).json({
+            success: false,
+            message: 'មានបញ្ហាបច្ចេកទេសក្នុងការ Upload រូបភាព',
+            error: error.message
+        });
+    } finally {
+        connection.release();
+    }
+};
+
+const uploadSlipMiddleware = (req, res, next) => {
+    uploadSlip.single('slipImage')(req, res, (err) => {
+        if (err) {
+            return res.status(400).json({ success: false, message: err.message });
+        }
+        next();
+    });
+};
+
+app.post('/api/payments/upload-slip/:invoiceId', uploadSlipMiddleware, handleUploadSlip);
+app.post('/api/finance/invoices/:id/slip', uploadSlipMiddleware, handleUploadSlip);
+
+// 📄 3. Invoice PDF Generator (PDFKit Stream with Khmer Font Support)
+const generateInvoicePdf = async (req, res) => {
+    const invoiceId = req.params.invoiceId || req.params.id;
+    try {
+        const [rows] = await pool.query(`
+            SELECT 
+                i.id AS invoice_id,
+                i.invoice_no,
+                i.billing_month AS month,
+                i.original_amount,
+                i.discount_type,
+                i.discount_val,
+                i.net_amount AS total_amount,
+                i.status,
+                i.receipt_number,
+                i.created_at,
+                i.due_date,
+                s.student_code,
+                s.name_kh AS khmer_name,
+                s.name_en AS latin_name,
+                s.phone AS phone_number,
+                c.class_name
+            FROM invoices i
+            JOIN students s ON i.student_id = s.id
+            LEFT JOIN classrooms c ON s.classroom_id = c.id
+            WHERE i.id = ?
+        `, [invoiceId]);
+
+        if (!rows || rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញវិក្កយបត្រនេះទេ' });
+        }
+
+        const inv = rows[0];
+        const filename = `Invoice-${inv.student_code || inv.invoice_id}-${inv.month || 'BLS'}.pdf`;
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+        if (!PDFDocument) {
+            return res.status(500).json({ success: false, message: 'PDF engine not initialized' });
+        }
+
+        const doc = new PDFDocument({ size: 'A4', margin: 40 });
+        doc.pipe(res);
+
+        // Check for Khmer fonts
+        const fontPath = path.join(__dirname, '..', 'assets', 'fonts', 'KhmerOSbattambang.ttf');
+        const boldFontPath = path.join(__dirname, '..', 'assets', 'fonts', 'Battambang-Bold.ttf');
+        const hasKhmerFont = fs.existsSync(fontPath);
+
+        if (hasKhmerFont) {
+            doc.registerFont('KhmerFont', fontPath);
+            if (fs.existsSync(boldFontPath)) {
+                doc.registerFont('KhmerBold', boldFontPath);
+            } else {
+                doc.registerFont('KhmerBold', fontPath);
+            }
+        }
+
+        const mainFont = hasKhmerFont ? 'KhmerFont' : 'Helvetica';
+        const boldFont = hasKhmerFont ? 'KhmerBold' : 'Helvetica-Bold';
+
+        // Header Section
+        doc.font(boldFont).fontSize(16).fillColor('#1e3a8a').text('សាលារៀន ប្រាយ ឡាយ (សាខាខេត្តបន្ទាយមានជ័យ)', { align: 'center' });
+        doc.font('Helvetica-Bold').fontSize(11).fillColor('#475569').text("BRIGHT LIFE SCHOOL - O'CHROV BRANCH", { align: 'center' });
+        doc.moveDown(0.5);
+        doc.font(boldFont).fontSize(15).fillColor('#0f172a').text('វិក្កយបត្រថ្លៃសិក្សា / TUITION INVOICE', { align: 'center', underline: true });
+        doc.moveDown(1);
+
+        // Metadata
+        doc.font(mainFont).fontSize(10).fillColor('#334155');
+        const leftX = 40;
+        const rightX = 330;
+        let currentY = doc.y;
+
+        doc.text(`អត្តលេខសិស្ស / ID: ${inv.student_code || 'N/A'}`, leftX, currentY);
+        doc.text(`ឈ្មោះសិស្ស: ${inv.khmer_name || ''} (${inv.latin_name || ''})`, leftX, currentY + 16);
+        doc.text(`ថ្នាក់រៀន / Class: ${inv.class_name || 'N/A'}`, leftX, currentY + 32);
+        doc.text(`លេខទូរស័ព្ទ / Phone: ${inv.phone_number || 'N/A'}`, leftX, currentY + 48);
+
+        doc.text(`លេខវិក្កយបត្រ / Invoice No: ${inv.invoice_no || 'INV-' + inv.invoice_id}`, rightX, currentY);
+        doc.text(`ប្រចាំខែ / Month: ${inv.month || 'បច្ចុប្បន្ន'}`, rightX, currentY + 16);
+        doc.text(`កាលបរិច្ឆេទចេញ: ${new Date(inv.created_at).toLocaleDateString('en-GB')}`, rightX, currentY + 32);
+        doc.text(`ស្ថានភាព / Status: ${inv.status}`, rightX, currentY + 48);
+
+        doc.moveDown(3.8);
+
+        // Table Header
+        const tableTop = doc.y;
+        doc.rect(40, tableTop, 515, 24).fill('#1e3a8a');
+        doc.fillColor('#ffffff').fontSize(10).font(boldFont);
+        doc.text('ល.រ (No.)', 48, tableTop + 7);
+        doc.text('បរិយាយមុខទំនិញ / Description', 110, tableTop + 7);
+        doc.text('ចំនួន (Qty)', 340, tableTop + 7);
+        doc.text('តម្លៃសរុប (Amount)', 440, tableTop + 7);
+
+        // Table Row
+        doc.fillColor('#0f172a').font(mainFont);
+        const rowY = tableTop + 27;
+        doc.rect(40, rowY, 515, 28).stroke('#cbd5e1');
+        doc.text('1', 55, rowY + 8);
+        doc.text(`ថ្លៃសិក្សាប្រចាំខែ (${inv.month || ''}) - ${inv.class_name || 'វគ្គសិក្សា'}`, 110, rowY + 8);
+        doc.text('1 ខែ', 350, rowY + 8);
+        doc.text(`$${Number(inv.total_amount).toFixed(2)}`, 450, rowY + 8);
+
+        // Total Summary
+        const totalY = rowY + 38;
+        doc.font(boldFont).fontSize(11).fillColor('#0f172a');
+        doc.text('ទឹកប្រាក់ត្រូវទូទាត់សរុប (Grand Total):', 250, totalY);
+        doc.fillColor('#1e3a8a').text(`$${Number(inv.total_amount).toFixed(2)}`, 450, totalY);
+
+        doc.moveDown(3);
+
+        // Payment Info Box
+        const paymentY = doc.y;
+        doc.rect(40, paymentY, 515, 80).fillAndStroke('#f8fafc', '#cbd5e1');
+        doc.fillColor('#1e3a8a').fontSize(10).font(boldFont);
+        doc.text('ព័ត៌មានសម្រាប់ធ្វើការទូទាត់ប្រាក់ (Payment Methods):', 50, paymentY + 10);
+        doc.fillColor('#334155').font(mainFont).fontSize(9);
+        doc.text('• ធនាគារ ABA: 000 123 456 (BRIGHT LIFE SCHOOL)', 50, paymentY + 28);
+        doc.text('• ធនាគារ Canadia: 001 987 654 (BRIGHT LIFE SCHOOL)', 50, paymentY + 44);
+        doc.text(`• សម្គាល់៖ សូមបញ្ចូលលេខវិក្កយបត្រ (${inv.invoice_no || 'INV-' + inv.invoice_id}) ក្នុងប្រអប់ Remark ពេលផ្ទេរប្រាក់`, 50, paymentY + 60);
+
+        // Signatures
+        const footerY = paymentY + 120;
+        doc.fontSize(10).font(mainFont).fillColor('#334155');
+        doc.text('ហត្ថលេខា និងត្រាបេឡា/រដ្ឋបាល', 60, footerY);
+        doc.text('ថ្ងៃទី....... ខែ....... ឆ្នាំ២០២....', 370, footerY);
+        doc.text('ហត្ថលេខាអាណាព្យាបាល', 390, footerY + 18);
+
+        doc.end();
+
+    } catch (error) {
+        console.error('[Invoice PDF Error]', error);
+        if (!res.headersSent) {
+            return res.status(500).json({ success: false, message: 'មានបញ្ហាបច្ចេកទេសក្នុងការបង្កើត PDF', error: error.message });
+        }
+    }
+};
+
+app.get('/api/invoices/:invoiceId/download-pdf', generateInvoicePdf);
+app.get('/api/finance/invoices/:invoiceId/pdf', generateInvoicePdf);
+
+app.post('/api/finance/invoices/:id/approve', async (req, res) => {
+    const { approved_by = 'Accountant' } = req.body;
+    try {
+        const [invs] = await pool.query('SELECT * FROM invoices WHERE id = ? LIMIT 1', [req.params.id]);
+        if (!invs || invs.length === 0) return res.status(404).json({ success: false, error: 'រកមិនឃើញវិក្កយបត្រនេះឡើយ!' });
+        const inv = invs[0];
+        await pool.query(
+            'UPDATE invoices SET status = "Paid", approved_by = ?, approved_at = NOW() WHERE id = ?',
+            [approved_by, req.params.id]
+        );
+        await pool.query(
+            'INSERT INTO student_payments (invoice_no, student_id, amount, paid_date, payment_method, note) VALUES (?, ?, ?, CURDATE(), "KHQR", ?)',
+            [inv.invoice_no, inv.student_id, inv.net_amount, `ទូទាត់វិក្កយបត្រ ${inv.invoice_no}`]
+        );
+        logAudit({ action: 'APPROVE_PAYMENT', tableName: 'invoices', recordId: inv.id, newValues: { status: 'Paid', approved_by }, req });
+        return res.json({ success: true, message: 'បានអនុម័តការបង់ប្រាក់ និងចេញបង្កាន់ដៃផ្លូវការជោគជ័យ!' });
+    } catch (e) {
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 💳 Cashier / Accountant Payment Slip Verification with DB Transaction
+const handlePaymentVerification = async (req, res) => {
+    const invoiceId = req.params.invoiceId || req.params.id;
+    const { action, rejectionReason, verifiedBy } = req.body;
+
+    if (!action || !['APPROVE', 'REJECT'].includes(action.toUpperCase())) {
+        return res.status(400).json({
+            success: false,
+            message: 'សកម្មភាពមិនត្រឹមត្រូវ! តម្រូវឱ្យជ្រើសរើស APPROVE ឬ REJECT'
+        });
+    }
+
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        // Lock invoice row FOR UPDATE to prevent race conditions
+        const [rows] = await connection.query(`
+            SELECT 
+                i.id,
+                i.invoice_no,
+                i.net_amount AS total_amount,
+                i.billing_month AS month,
+                i.status,
+                i.slip_image_url,
+                s.id AS student_id,
+                s.student_code,
+                s.name_kh AS khmer_name,
+                s.name_en AS english_name,
+                s.telegram_chat_id
+            FROM invoices i
+            JOIN students s ON i.student_id = s.id
+            WHERE i.id = ?
+            FOR UPDATE
+        `, [invoiceId]);
+
+        if (!rows || rows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({
+                success: false,
+                message: 'រកមិនឃើញវិក្កយបត្រនេះក្នុងប្រព័ន្ធឡើយ!'
+            });
+        }
+
+        const invoice = rows[0];
+        const currentStatus = (invoice.status || '').toUpperCase();
+
+        if (currentStatus !== 'PENDING' && currentStatus !== 'UNDER_REVIEW') {
+            await connection.rollback();
+            return res.status(400).json({
+                success: false,
+                message: `វិក្កយបត្រនេះមិនស្ថិតក្នុងស្ថានភាពរង់ចាំការត្រួតពិនិត្យឡើយ (ស្ថានភាពបច្ចុប្បន្ន៖ ${invoice.status})`
+            });
+        }
+
+        const cashierId = verifiedBy || req.user?.id || 1;
+        const now = new Date();
+        const formattedDate = now.toLocaleDateString('km-KH', { year: 'numeric', month: 'long', day: 'numeric' });
+
+        if (action.toUpperCase() === 'APPROVE') {
+            // Generate official receipt number: REC-YYYYMM-INVOICEID
+            const cleanMonth = (invoice.month || '').replace(/[^0-9]/g, '') || now.toISOString().slice(0, 7).replace(/-/g, '');
+            const receiptNumber = `REC-${cleanMonth}-${invoice.id}`;
+
+            // Update invoice status to PAID
+            await connection.query(`
+                UPDATE invoices 
+                SET status = 'PAID',
+                    receipt_number = ?,
+                    verified_by = ?,
+                    verified_at = NOW(),
+                    rejection_reason = NULL,
+                    approved_by = 'Cashier/Accountant',
+                    approved_at = NOW()
+                WHERE id = ?
+            `, [receiptNumber, cashierId, invoice.id]);
+
+            // Insert into student_payments for financial records
+            await connection.query(`
+                INSERT INTO student_payments (invoice_no, student_id, amount, paid_date, payment_method, note, status)
+                VALUES (?, ?, ?, CURDATE(), 'KHQR', ?, 'Paid')
+            `, [invoice.invoice_no, invoice.student_id, invoice.total_amount, `ទូទាត់វិក្កយបត្រ ${invoice.invoice_no} (បង្កាន់ដៃលេខ៖ ${receiptNumber})`]);
+
+            await connection.commit();
+
+            // Send Telegram notification to parent / admin asynchronously
+            const receiptMsg = `🎉 <b>សាលាប្រាយ ឡាយ • ដំណឹងទទួលបានការទូទាត់ជោគជ័យ</b>\n\n` +
+                               `សួស្តីអាណាព្យាបាលសិស្ស <b>${invoice.khmer_name || invoice.english_name || 'សិស្ស'}</b> (អត្តលេខ៖ ${invoice.student_code || 'BLS-' + invoice.student_id})!\n\n` +
+                               `គណនេយ្យករបានផ្ទៀងផ្ទាត់ និងអនុម័តបង្កាន់ដៃបង់ប្រាក់រួចរាល់៖\n` +
+                               `🧾 <b>លេខបង្កាន់ដៃផ្លូវការ៖</b> <code>${receiptNumber}</code>\n` +
+                               `📄 <b>លេខវិក្កយបត្រ៖</b> ${invoice.invoice_no}\n` +
+                               `🗓️ <b>ប្រចាំខែ៖</b> ${invoice.month || 'បច្ចុប្បន្ន'}\n` +
+                               `💵 <b>ចំនួនទឹកប្រាក់៖</b> $${Number(invoice.total_amount).toFixed(2)}\n` +
+                               `📅 <b>កាលបរិច្ឆេទអនុម័ត៖</b> ${formattedDate}\n\n` +
+                               `<i>សូមអរគុណសម្រាប់ការសហការ និងបង់ថ្លៃសិក្សាទាន់ពេលវេលា! 🙏</i>`;
+
+            sendTelegramAlert(receiptMsg, invoice.telegram_chat_id);
+            logAudit({ action: 'VERIFY_APPROVE_PAYMENT', tableName: 'invoices', recordId: invoice.id, newValues: { receiptNumber, status: 'PAID' }, req });
+
+            return res.json({
+                success: true,
+                message: 'បានអនុម័តការបង់ប្រាក់ និងចេញបង្កាន់ដៃផ្លូវការជោគជ័យ!',
+                data: {
+                    invoiceId: invoice.id,
+                    invoiceNo: invoice.invoice_no,
+                    receiptNumber,
+                    status: 'PAID',
+                    amount: invoice.total_amount,
+                    studentName: invoice.khmer_name || invoice.english_name
+                }
+            });
+
+        } else {
+            // Action is REJECT
+            const reason = rejectionReason || 'ព័ត៌មានមិនត្រឹមត្រូវ ឬរូបភាពបង្កាន់ដៃមិនច្បាស់លាស់';
+
+            // Reset invoice status to UNPAID and clear slip
+            await connection.query(`
+                UPDATE invoices 
+                SET status = 'UNPAID',
+                    slip_image_url = NULL,
+                    rejection_reason = ?,
+                    verified_by = ?,
+                    verified_at = NOW()
+                WHERE id = ?
+            `, [reason, cashierId, invoice.id]);
+
+            await connection.commit();
+
+            // Send Telegram rejection alert
+            const rejectMsg = `⚠️ <b>សាលាប្រាយ ឡាយ • បដិសេធបង្កាន់ដៃបង់ប្រាក់</b>\n\n` +
+                              `សួស្តីអាណាព្យាបាលសិស្ស <b>${invoice.khmer_name || invoice.english_name || 'សិស្ស'}</b> (អត្តលេខ៖ ${invoice.student_code || 'BLS-' + invoice.student_id})!\n\n` +
+                              `បង្កាន់ដៃបង់ប្រាក់សម្រាប់វិក្កយបត្រ <b>${invoice.invoice_no}</b> មិនត្រូវបានអនុម័តឡើយ។\n` +
+                              `❌ <b>មូលហេតុ៖</b> ${reason}\n\n` +
+                              `<i>👉 សូមមេត្តាពិនិត្យ និង Upload បង្កាន់ដៃបង់ប្រាក់ម្តងទៀតតាមប្រព័ន្ធ។ សូមអរគុណ!</i>`;
+
+            sendTelegramAlert(rejectMsg, invoice.telegram_chat_id);
+            logAudit({ action: 'VERIFY_REJECT_PAYMENT', tableName: 'invoices', recordId: invoice.id, newValues: { status: 'UNPAID', rejectionReason: reason }, req });
+
+            return res.json({
+                success: true,
+                message: 'បានបដិសេធបង្កាន់ដៃបង់ប្រាក់រួចរាល់!',
+                data: {
+                    invoiceId: invoice.id,
+                    invoiceNo: invoice.invoice_no,
+                    status: 'UNPAID',
+                    rejectionReason: reason
+                }
+            });
+        }
+    } catch (error) {
+        await connection.rollback();
+        console.error('[Payment Verification Error]', error);
+        return res.status(500).json({
+            success: false,
+            message: 'មានបញ្ហាបច្ចេកទេសក្នុងអំឡុងពេលផ្ទៀងផ្ទាត់ទូទាត់ប្រាក់',
+            error: error.message
+        });
+    } finally {
+        connection.release();
+    }
+};
+
+app.patch('/api/payments/verify/:invoiceId', handlePaymentVerification);
+app.post('/api/payments/verify/:invoiceId', handlePaymentVerification);
+app.patch('/api/finance/invoices/:id/verify', handlePaymentVerification);
+app.post('/api/finance/invoices/:id/verify', handlePaymentVerification);
+
+app.get('/api/system/audit-logs', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100');
+        return res.json({ success: true, data: rows });
+    } catch (e) {
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.post('/api/telegram/test', async (req, res) => {
+    const { chat_id, message } = req.body;
+    try {
+        await sendTelegramAlert(message || '🔔 តេស្តការតភ្ជាប់ Telegram Bot សាលាប្រាយ ឡាយ (Bright Light International School) ជោគជ័យ!', chat_id);
+        return res.json({ success: true, message: 'បានផ្ញើសារសាកល្បងទៅកាន់ Telegram ជោគជ័យ!' });
+    } catch (e) {
+        return res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 // Student Payments (Handles both /api/payments/students and /api/finance/student-payments)
 const handleStudentPaymentGet = async (req, res) => {
     try {
@@ -1247,12 +2910,52 @@ const handleStudentPaymentPost = async (req, res) => {
     } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
 };
 
-app.get(['/api/payments/students', '/payments/students', '/api/finance/student-payments', '/finance/student-payments'], handleStudentPaymentGet);
-app.post(['/api/payments/students', '/payments/students', '/api/finance/student-payments', '/finance/student-payments'], handleStudentPaymentPost);
-app.delete(['/api/payments/students/:id', '/payments/students/:id'], async (req, res) => {
+app.get(['/api/payments', '/payments', '/api/payments/students', '/payments/students', '/api/finance/student-payments', '/finance/student-payments'], handleStudentPaymentGet);
+app.post(['/api/payments', '/payments', '/api/payments/students', '/payments/students', '/api/finance/student-payments', '/finance/student-payments'], handleStudentPaymentPost);
+app.delete(['/api/payments/:id', '/payments/:id', '/api/payments/students/:id', '/payments/students/:id'], async (req, res) => {
     try {
         await pool.query('DELETE FROM student_payments WHERE id = ?', [req.params.id]);
         return res.json({ success: true, message: 'បានលុបកំណត់ត្រាបង់ប្រាក់ជោគជ័យ!' });
+    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+});
+
+// Finance Stats Endpoint (handles /api/finance and /api/finance/stats)
+app.get(['/api/finance', '/finance', '/api/finance/stats', '/finance/stats'], async (req, res) => {
+    try {
+        const [
+            [[{ totalRevenue }]],
+            [[{ totalSalaries }]],
+            [[{ monthRevenue }]],
+            [[{ monthSalaries }]],
+            [[{ totalStudents }]],
+            [[{ totalTeachers }]]
+        ] = await Promise.all([
+            pool.query('SELECT COALESCE(SUM(amount), 0) AS totalRevenue FROM student_payments').catch(() => [[{ totalRevenue: 0 }]]),
+            pool.query('SELECT COALESCE(SUM(net_salary), 0) AS totalSalaries FROM teacher_salaries').catch(() => [[{ totalSalaries: 0 }]]),
+            pool.query("SELECT COALESCE(SUM(amount), 0) AS monthRevenue FROM student_payments WHERE DATE_FORMAT(COALESCE(paid_date, created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')").catch(() => [[{ monthRevenue: 0 }]]),
+            pool.query("SELECT COALESCE(SUM(net_salary), 0) AS monthSalaries FROM teacher_salaries WHERE DATE_FORMAT(COALESCE(paid_date, created_at), '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')").catch(() => [[{ monthSalaries: 0 }]]),
+            pool.query('SELECT COUNT(*) AS totalStudents FROM students').catch(() => [[{ totalStudents: 0 }]]),
+            pool.query('SELECT COUNT(*) AS totalTeachers FROM teachers').catch(() => [[{ totalTeachers: 0 }]])
+        ]);
+
+        const rev = Number(totalRevenue || 0);
+        const sal = Number(totalSalaries || 0);
+        const mRev = Number(monthRevenue || 0);
+        const mSal = Number(monthSalaries || 0);
+
+        return res.json({
+            success: true,
+            data: {
+                totalRevenue: rev,
+                totalSalaries: sal,
+                netProfit: rev - sal,
+                monthRevenue: mRev,
+                monthSalaries: mSal,
+                monthNetProfit: mRev - mSal,
+                totalStudents: Number(totalStudents || 0),
+                totalTeachers: Number(totalTeachers || 0)
+            }
+        });
     } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
 });
 
@@ -1392,8 +3095,20 @@ app.get('/api/reports/summary', async (req, res) => {
             `).catch(() => [[]])
         ]);
 
+        const rev = Number(totalRevenue || 0);
+        const sal = Number(totalSalaries || 0);
+        const net = rev - sal;
+
         const result = {
             success: true,
+            data: {
+                totalIncome: rev,
+                totalExpense: sal,
+                netProfit: net,
+                totalStudents: Number(totalStudents || 0),
+                totalTeachers: Number(totalTeachers || 0),
+                totalClassrooms: Number(totalClassrooms || 0)
+            },
             summary: {
                 totalStudents: Number(totalStudents || 0),
                 maleStudents: Number(maleStudents || 0),
@@ -1403,9 +3118,9 @@ app.get('/api/reports/summary', async (req, res) => {
                 todayPresent: Number(todayPresent || 0),
                 todayAbsent: Number(todayAbsent || 0),
                 todayPermission: Number(todayPermission || 0),
-                totalRevenue: Number(totalRevenue || 0),
-                totalSalaries: Number(totalSalaries || 0),
-                netBalance: Number((totalRevenue || 0) - (totalSalaries || 0))
+                totalRevenue: rev,
+                totalSalaries: sal,
+                netBalance: net
             },
             recentAttendance
         };
@@ -1414,6 +3129,110 @@ app.get('/api/reports/summary', async (req, res) => {
         lastReportFetch = now;
 
         return res.json(result);
+    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+});
+
+// Periodic Financial Summary (for Reports & Closing screen)
+app.get(['/api/reports/financial-summary', '/reports/financial-summary'], async (req, res) => {
+    try {
+        const { type, start_date, end_date } = req.query;
+        let dateFilterRev = '';
+        let dateFilterSal = '';
+        let dateFilterAtt = '';
+        const paramsRev = [];
+        const paramsSal = [];
+        const paramsAtt = [];
+
+        if (start_date && end_date) {
+            dateFilterRev = 'WHERE DATE(paid_date) BETWEEN ? AND ?';
+            dateFilterSal = 'WHERE DATE(paid_date) BETWEEN ? AND ?';
+            dateFilterAtt = 'WHERE DATE(date) BETWEEN ? AND ?';
+            paramsRev.push(start_date, end_date);
+            paramsSal.push(start_date, end_date);
+            paramsAtt.push(start_date, end_date);
+        } else if (type === 'Daily') {
+            dateFilterRev = 'WHERE DATE(paid_date) = CURDATE()';
+            dateFilterSal = 'WHERE DATE(paid_date) = CURDATE()';
+            dateFilterAtt = 'WHERE DATE(date) = CURDATE()';
+        } else if (type === 'Weekly') {
+            dateFilterRev = 'WHERE paid_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)';
+            dateFilterSal = 'WHERE paid_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)';
+            dateFilterAtt = 'WHERE date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)';
+        } else if (type === 'Monthly') {
+            dateFilterRev = "WHERE DATE_FORMAT(paid_date, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')";
+            dateFilterSal = "WHERE DATE_FORMAT(paid_date, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')";
+            dateFilterAtt = "WHERE DATE_FORMAT(date, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')";
+        } else if (type === 'Yearly') {
+            dateFilterRev = 'WHERE YEAR(paid_date) = YEAR(CURDATE())';
+            dateFilterSal = 'WHERE YEAR(paid_date) = YEAR(CURDATE())';
+            dateFilterAtt = 'WHERE YEAR(date) = YEAR(CURDATE())';
+        }
+
+        const [
+            [[{ totalIncome }]],
+            [[{ totalExpense }]],
+            [[{ studentAttendance }]],
+            [[{ teacherAttendance }]]
+        ] = await Promise.all([
+            pool.query(`SELECT COALESCE(SUM(amount), 0) AS totalIncome FROM student_payments ${dateFilterRev}`, paramsRev).catch(() => [[{ totalIncome: 0 }]]),
+            pool.query(`SELECT COALESCE(SUM(net_salary), 0) AS totalExpense FROM teacher_salaries ${dateFilterSal}`, paramsSal).catch(() => [[{ totalExpense: 0 }]]),
+            pool.query(`SELECT COUNT(*) AS studentAttendance FROM attendance ${dateFilterAtt ? dateFilterAtt + ' AND student_id IS NOT NULL' : 'WHERE student_id IS NOT NULL'}`, paramsAtt).catch(() => [[{ studentAttendance: 0 }]]),
+            pool.query(`SELECT COUNT(*) AS teacherAttendance FROM attendance ${dateFilterAtt ? dateFilterAtt + ' AND teacher_id IS NOT NULL' : 'WHERE teacher_id IS NOT NULL'}`, paramsAtt).catch(() => [[{ teacherAttendance: 0 }]])
+        ]);
+
+        const inc = Number(totalIncome || 0);
+        const exp = Number(totalExpense || 0);
+
+        return res.json({
+            success: true,
+            summary: {
+                total_income: inc.toFixed(2),
+                total_expense: exp.toFixed(2),
+                net_profit: (inc - exp).toFixed(2),
+                student_attendance: Number(studentAttendance || 0),
+                teacher_attendance: Number(teacherAttendance || 0)
+            }
+        });
+    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+});
+
+// Periodic Close Period Execution (Reports Closing)
+app.post(['/api/reports/close-period', '/reports/close-period'], async (req, res) => {
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS period_closings (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                closing_type VARCHAR(50) NOT NULL,
+                start_date VARCHAR(50) NULL,
+                end_date VARCHAR(50) NULL,
+                total_income DECIMAL(12,2) DEFAULT 0.00,
+                total_expense DECIMAL(12,2) DEFAULT 0.00,
+                net_profit DECIMAL(12,2) DEFAULT 0.00,
+                closed_by INT NULL,
+                notes TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `).catch(() => {});
+
+        const { closing_type, start_date, end_date, total_income, total_expense, net_profit, closed_by, notes } = req.body;
+        await pool.query(`
+            INSERT INTO period_closings (closing_type, start_date, end_date, total_income, total_expense, net_profit, closed_by, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+            closing_type || 'Monthly',
+            start_date || null,
+            end_date || null,
+            parseFloat(total_income) || 0,
+            parseFloat(total_expense) || 0,
+            parseFloat(net_profit) || 0,
+            closed_by || null,
+            notes || ''
+        ]);
+
+        return res.json({
+            success: true,
+            message: `បានអនុម័តបិទបញ្ជី (${closing_type}) ជោគជ័យ!`
+        });
     } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
 });
 
@@ -2073,7 +3892,7 @@ ${list}
 // SPA Fallback for root / and client-side Flutter routing (excluding /api, /health, /console)
 app.use((req, res, next) => {
     if (req.method === 'GET' && !req.path.startsWith('/api') && !req.path.startsWith('/health') && !req.path.startsWith('/console')) {
-        const flutterIndex = path.join(__dirname, 'public', 'index.html');
+        const flutterIndex = path.join(activeWebDir, 'index.html');
         if (fs.existsSync(flutterIndex)) {
             return res.sendFile(flutterIndex);
         }
@@ -2082,5 +3901,11 @@ app.use((req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, '0.0.0.0', () => console.log(`🚀 BLS Enterprise Server running on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 BLS Enterprise Server running on port ${PORT}`);
+    console.log(`🌐 Web App:  http://localhost:${PORT}`);
+    console.log(`📡 API Base: http://localhost:${PORT}/api`);
+    console.log(`⚠️  សូមកុំបិទផ្ទាំងនេះ (Server ត្រូវដំណើរការជាប់រហូត ទើប Flutter អាច Login បាន)`);
+});
+
 

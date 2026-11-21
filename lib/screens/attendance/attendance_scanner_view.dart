@@ -14,7 +14,7 @@ class AttendanceScannerView extends StatefulWidget {
 
 class _AttendanceScannerViewState extends State<AttendanceScannerView>
     with SingleTickerProviderStateMixin {
-  static String baseUrl = ApiService.baseUrl;
+  static String get baseUrl => ApiService.baseUrl;
 
   final TextEditingController _codeCtrl = TextEditingController();
   final FocusNode _focusNode = FocusNode();

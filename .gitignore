@@ -1,6 +1,9 @@
 # Node.js
 node_modules/
+backend/node_modules/
 .env
+.env.*
+backend/.env
 
 # Flutter/Dart
 .dart_tool/
@@ -9,3 +12,7 @@ build/
 .flutter-plugins
 .flutter-plugins-dependencies
 *.log
+
+# Large binaries & installers
+*.msi
+*.exe

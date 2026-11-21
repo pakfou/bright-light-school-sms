@@ -1,0 +1,12 @@
+{
+  "name": "school_management_app",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "cd backend && node server.js",
+    "tunnel": "npx -y localtunnel --port 5000 --local-host 127.0.0.1 --subdomain bls-bmc-2026",
+    "tunnel:pinggy": "ssh -p 443 -R0:127.0.0.1:5000 -o StrictHostKeyChecking=no nTh62Kv4NWl@free.pinggy.io"
+  },
+  "dependencies": {
+    "compression": "^1.8.2"
+  }
+}

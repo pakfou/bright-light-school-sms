@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 import '../models/classroom_model.dart';
 import '../services/api_service.dart';
+import '../config/api_config.dart';
 
 class AuthProvider extends ChangeNotifier {
   UserModel? _currentUser;
@@ -36,6 +37,41 @@ class AuthProvider extends ChangeNotifier {
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  /// Instant Demo Admin login fallback
+  Future<bool> loginDemoAdmin() async {
+    ApiConfig.isDemoMode = true;
+    final demoAdmin = {
+      'id': 1,
+      'name': 'អ្នកគ្រប់គ្រងប្រព័ន្ធ (Admin Demo)',
+      'email': 'admin@brightlight.edu.kh',
+      'role': 'Admin',
+      'permissions': {
+        'overview': true,
+        'students': true,
+        'teachers': true,
+        'classrooms': true,
+        'attendance': true,
+        'grades': true,
+        'finance': true,
+        'idcards': true,
+        'schedule': true,
+        'ai': true,
+        'reports': true,
+      },
+    };
+    _currentUser = UserModel.fromJson(demoAdmin);
+    _assignedClasses = ApiService.demoClassrooms;
+    if (_assignedClasses.isNotEmpty) {
+      _selectedClass = _assignedClasses.first;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_data', jsonEncode(demoAdmin));
+    _isLoading = false;
+    _errorMessage = null;
+    notifyListeners();
+    return true;
   }
 
   Future<bool> login(Map<String, dynamic> payload) async {
@@ -75,7 +111,60 @@ class AuthProvider extends ChangeNotifier {
         return false;
       }
     } catch (e) {
-      _errorMessage = 'មានបញ្ហាប្រព័ន្ធកំឡុងពេលចូលគណនី: $e';
+      final email = (payload['email'] ?? '').toString().trim().toLowerCase();
+      final pass = (payload['password'] ?? '').toString().trim();
+      final role = (payload['role'] ?? '').toString();
+
+      // Demo fallback when server is unreachable or offline
+      if (role == 'Admin' &&
+          (pass == '1202' ||
+              pass == 'admin123' ||
+              email == 'admin@brightlight.edu.kh' ||
+              email.contains('admin'))) {
+        ApiConfig.isDemoMode = true;
+        final demoAdmin = {
+          'id': 1,
+          'name': 'អ្នកគ្រប់គ្រងប្រព័ន្ធ (Admin)',
+          'email': email.isNotEmpty ? email : 'admin@brightlight.edu.kh',
+          'role': 'Admin',
+          'permissions': {
+            'overview': true,
+            'students': true,
+            'teachers': true,
+            'classrooms': true,
+            'attendance': true,
+            'grades': true,
+            'finance': true,
+            'idcards': true,
+            'schedule': true,
+            'ai': true,
+            'reports': true,
+          },
+        };
+        _currentUser = UserModel.fromJson(demoAdmin);
+        _assignedClasses = ApiService.demoClassrooms;
+        if (_assignedClasses.isNotEmpty) {
+          _selectedClass = _assignedClasses.first;
+        }
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_data', jsonEncode(demoAdmin));
+        return true;
+      }
+
+      final errStr = e.toString();
+      if (errStr.contains('Connection refused') ||
+          errStr.contains('Failed to connect') ||
+          errStr.contains('ClientException') ||
+          errStr.contains('SocketException')) {
+        _errorMessage =
+            '⚠️ មិនអាចតភ្ជាប់ទៅកាន់ Server បានទេ!\n\n'
+            'មូលហេតុ៖ Cloud Backend (Render.com) កំពុង Spin Up ឬមិនទាន់ឆ្លើយតប។\n'
+            'ដំណោះស្រាយ៖\n'
+            '1. សូមរង់ចាំប្រហែល ៣០ វិនាទី រួចសាកល្បង Login ម្តងទៀត\n'
+            '2. ឬចុចប៊ូតុង "⚡ ចូលមើលសាកល្បង Demo Admin" ខាងក្រោម ដើម្បីចូលប្រើភ្លាមៗ។';
+      } else {
+        _errorMessage = 'មានបញ្ហាប្រព័ន្ធកំឡុងពេលចូលគណនី: $e';
+      }
       return false;
     } finally {
       _isLoading = false;

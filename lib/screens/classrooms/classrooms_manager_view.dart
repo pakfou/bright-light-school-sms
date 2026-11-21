@@ -1,5 +1,6 @@
 import 'package:school_management_app/services/api_service.dart';
 import 'package:school_management_app/utils/csv_exporter.dart';
+import 'package:school_management_app/models/app_models.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -13,16 +14,39 @@ class ClassroomsManagerView extends StatefulWidget {
 
 class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
     with SingleTickerProviderStateMixin {
-  static String baseUrl = ApiService.baseUrl;
+  static String get baseUrl => ApiService.baseUrl;
   List<dynamic> _levels = [];
   List<dynamic> _classes = [];
   bool _isLoading = true;
   late TabController _tabController;
+  bool _countMergedRooms = true;
+  bool _showInsights = true;
+
+  String _selectedAcademicYear = '2025-2026';
+  final List<String> _academicYears = [
+    'ទាំងអស់ (All Years)',
+    '2024-2025',
+    '2025-2026',
+    '2026-2027',
+  ];
+
+  final List<String> _teacherNames = [
+    'ហាក់ ប៉ាក់ហ៊្វូរ',
+    'សន ចរិយា',
+    'ចាន់ សុវណ្ណារ៉ា',
+    'ទូច ស្រីមុំ (Tous Sreymom)',
+    'ភី ស្រីនុច (Phi Sreynuch)',
+    'រី ស្រីនាង (Ry Sreyneang)',
+    'សុផាន់ ម៉ៃ (Sophann May)',
+    'អ៊ាត សុជា (Eat Sochea)',
+    'វ៉ែន លាភហេង (Ven Leapheng)',
+    'ប៉ែន រីណា (Pen Rina)',
+  ];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _loadAll();
   }
 
@@ -38,9 +62,12 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
       final results = await Future.wait([
         http.get(Uri.parse('$baseUrl/grade-levels')),
         http.get(Uri.parse('$baseUrl/classrooms')),
+        http.get(Uri.parse('$baseUrl/teachers')).catchError((_) => http.Response('{"data":[]}', 200)),
       ]);
       final lRes = results[0];
       final cRes = results[1];
+      final tRes = results[2];
+
       if (mounted) {
         setState(() {
           if (lRes.statusCode == 200) {
@@ -54,6 +81,42 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
               final d = jsonDecode(utf8.decode(cRes.bodyBytes))['data'];
               if (d is List && d.isNotEmpty) _classes = d;
             } catch (_) {}
+          }
+          if (tRes.statusCode == 200) {
+            try {
+              final td = jsonDecode(utf8.decode(tRes.bodyBytes))['data'];
+              if (td is List && td.isNotEmpty) {
+                for (var t in td) {
+                  final name = t['name_kh'] ?? t['name'] ?? t['fullName'];
+                  if (name != null && !_teacherNames.contains(name.toString())) {
+                    _teacherNames.add(name.toString());
+                  }
+                }
+              }
+            } catch (_) {}
+          }
+
+          // Ensure default teacher and academic year values exist for display
+          if (_classes.isNotEmpty) {
+            for (var c in _classes) {
+              if (c['academic_year'] == null || c['academic_year'].toString().isEmpty) {
+                c['academic_year'] = '2025-2026';
+              }
+              if (c['teacher_name'] == null || c['teacher_name'].toString().isEmpty) {
+                final cName = c['class_name']?.toString() ?? '';
+                if (cName.contains('05') || cName.contains('O5')) {
+                  c['teacher_name'] = 'ទូច ស្រីមុំ (Tous Sreymom)';
+                } else if (cName.contains('02') || cName.contains('O2')) {
+                  c['teacher_name'] = 'ភី ស្រីនុច (Phi Sreynuch)';
+                } else if (cName.contains('01') || cName.contains('O1')) {
+                  c['teacher_name'] = 'រី ស្រីនាង (Ry Sreyneang)';
+                } else if (cName.contains('រដ្ឋបាល')) {
+                  c['teacher_name'] = 'ហាក់ ប៉ាក់ហ៊្វូរ (Admin)';
+                } else {
+                  c['teacher_name'] = 'ហាក់ ប៉ាក់ហ៊្វូរ';
+                }
+              }
+            }
           }
           if (_levels.isEmpty) {
             _levels = [
@@ -98,6 +161,80 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                 'name': 'ភាសាអង់គ្លេសទូទៅ (GEP)',
                 'study_type': 'Part-Time',
                 'description': 'ក្រៅម៉ោង',
+              },
+            ];
+          }
+          if (_classes.isEmpty) {
+            _classes = [
+              {
+                'id': 25,
+                'class_name': '05 (Going Place 3)',
+                'grade_level': 'ភាសាអង់គ្លេសទូទៅ (GEP)',
+                'room_number': 'Room-01',
+                'shift': 'Afternoon',
+                'teacher_name': 'ទូច ស្រីមុំ (Tous Sreymom)',
+                'academic_year': '2025-2026',
+                'students_count': 20,
+              },
+              {
+                'id': 24,
+                'class_name': '02 (EFL 5A)',
+                'grade_level': 'ភាសាអង់គ្លេសទូទៅ (GEP)',
+                'room_number': 'Room 01',
+                'shift': 'Afternoon',
+                'teacher_name': 'ភី ស្រីនុច (Phi Sreynuch)',
+                'academic_year': '2025-2026',
+                'students_count': 20,
+              },
+              {
+                'id': 23,
+                'class_name': '01 (EFL 3B)',
+                'grade_level': 'ភាសាអង់គ្លេសទូទៅ (GEP)',
+                'room_number': 'Room-01',
+                'shift': 'Afternoon',
+                'teacher_name': 'រី ស្រីនាង / ប៉ែន រីណា',
+                'academic_year': '2025-2026',
+                'students_count': 12,
+              },
+              {
+                'id': 1,
+                'class_name': 'ថ្នាក់ទី ១A',
+                'grade_level': 'ថ្នាក់ទី ១ (Grade 1)',
+                'room_number': 'Room-101',
+                'shift': 'Morning',
+                'teacher_name': 'ហាក់ ប៉ាក់ហ៊្វូរ',
+                'academic_year': '2025-2026',
+                'students_count': 28,
+              },
+              {
+                'id': 2,
+                'class_name': 'ថ្នាក់ទី ២A',
+                'grade_level': 'ថ្នាក់ទី ២ (Grade 2)',
+                'room_number': 'Room-102',
+                'shift': 'Morning',
+                'teacher_name': 'សន ចរិយា',
+                'academic_year': '2025-2026',
+                'students_count': 25,
+              },
+              {
+                'id': 6,
+                'class_name': 'ថ្នាក់ទី ១២A',
+                'grade_level': 'ថ្នាក់ទី ១២ (Grade 12)',
+                'room_number': 'Room-201',
+                'shift': 'Morning',
+                'teacher_name': 'ចាន់ សុវណ្ណារ៉ា',
+                'academic_year': '2025-2026',
+                'students_count': 18,
+              },
+              {
+                'id': 13,
+                'class_name': 'បន្ទប់ការិយាល័យ & រដ្ឋបាល',
+                'grade_level': 'ភាសាចិន (Chinese Program)',
+                'room_number': 'Admin-01',
+                'shift': 'Morning',
+                'teacher_name': 'ហាក់ ប៉ាក់ហ៊្វូរ (Admin)',
+                'academic_year': '2025-2026',
+                'students_count': 1,
               },
             ];
           }
@@ -150,6 +287,80 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                 'name': 'ភាសាអង់គ្លេសទូទៅ (GEP)',
                 'study_type': 'Part-Time',
                 'description': 'ក្រៅម៉ោង',
+              },
+            ];
+          }
+          if (_classes.isEmpty) {
+            _classes = [
+              {
+                'id': 25,
+                'class_name': '05 (Going Place 3)',
+                'grade_level': 'ភាសាអង់គ្លេសទូទៅ (GEP)',
+                'room_number': 'Room-01',
+                'shift': 'Afternoon',
+                'teacher_name': 'ទូច ស្រីមុំ (Tous Sreymom)',
+                'academic_year': '2025-2026',
+                'students_count': 20,
+              },
+              {
+                'id': 24,
+                'class_name': '02 (EFL 5A)',
+                'grade_level': 'ភាសាអង់គ្លេសទូទៅ (GEP)',
+                'room_number': 'Room 01',
+                'shift': 'Afternoon',
+                'teacher_name': 'ភី ស្រីនុច (Phi Sreynuch)',
+                'academic_year': '2025-2026',
+                'students_count': 20,
+              },
+              {
+                'id': 23,
+                'class_name': '01 (EFL 3B)',
+                'grade_level': 'ភាសាអង់គ្លេសទូទៅ (GEP)',
+                'room_number': 'Room-01',
+                'shift': 'Afternoon',
+                'teacher_name': 'រី ស្រីនាង / ប៉ែន រីណា',
+                'academic_year': '2025-2026',
+                'students_count': 12,
+              },
+              {
+                'id': 1,
+                'class_name': 'ថ្នាក់ទី ១A',
+                'grade_level': 'ថ្នាក់ទី ១ (Grade 1)',
+                'room_number': 'Room-101',
+                'shift': 'Morning',
+                'teacher_name': 'ហាក់ ប៉ាក់ហ៊្វូរ',
+                'academic_year': '2025-2026',
+                'students_count': 28,
+              },
+              {
+                'id': 2,
+                'class_name': 'ថ្នាក់ទី ២A',
+                'grade_level': 'ថ្នាក់ទី ២ (Grade 2)',
+                'room_number': 'Room-102',
+                'shift': 'Morning',
+                'teacher_name': 'សន ចរិយា',
+                'academic_year': '2025-2026',
+                'students_count': 25,
+              },
+              {
+                'id': 6,
+                'class_name': 'ថ្នាក់ទី ១២A',
+                'grade_level': 'ថ្នាក់ទី ១២ (Grade 12)',
+                'room_number': 'Room-201',
+                'shift': 'Morning',
+                'teacher_name': 'ចាន់ សុវណ្ណារ៉ា',
+                'academic_year': '2025-2026',
+                'students_count': 18,
+              },
+              {
+                'id': 13,
+                'class_name': 'បន្ទប់ការិយាល័យ & រដ្ឋបាល',
+                'grade_level': 'ភាសាចិន (Chinese Program)',
+                'room_number': 'Admin-01',
+                'shift': 'Morning',
+                'teacher_name': 'ហាក់ ប៉ាក់ហ៊្វូរ (Admin)',
+                'academic_year': '2025-2026',
+                'students_count': 1,
               },
             ];
           }
@@ -354,6 +565,8 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
     final roomCtrl = TextEditingController(text: 'Room-01');
     int? selLevel = _levels.isNotEmpty ? _levels[0]['id'] : null;
     String shift = 'Morning';
+    String selectedTeacher = _teacherNames.first;
+    String academicYear = _selectedAcademicYear == 'ទាំងអស់ (All Years)' ? '2025-2026' : _selectedAcademicYear;
 
     if (_levels.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -378,288 +591,611 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
             borderRadius: BorderRadius.circular(24),
           ),
           child: Container(
-            width: 400,
+            width: 440,
             padding: const EdgeInsets.all(32),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(24),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFECFDF5),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFECFDF5),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.meeting_room,
+                          color: Color(0xFF10B981),
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      const Text(
+                        'បង្កើតបន្ទប់ថ្នាក់រៀនថ្មី',
+                        style: TextStyle(
+                          fontFamily: 'Khmer OS Muol Light',
+                          fontSize: 16,
+                          color: Color(0xFF1E293B),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 28),
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'ឈ្មោះថ្នាក់ (ឧ. ថ្នាក់ទី១ ក / O5)...',
+                      labelStyle: const TextStyle(
+                        fontFamily: 'Khmer OS Battambang',
+                        fontSize: 13,
+                        color: Color(0xFF64748B),
+                      ),
+                      border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
                       ),
-                      child: const Icon(
-                        Icons.meeting_room,
-                        color: Color(0xFF10B981),
-                        size: 24,
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    const Text(
-                      'បង្កើតបន្ទប់ថ្នាក់រៀនថ្មី',
-                      style: TextStyle(
-                        fontFamily: 'Khmer OS Muol Light',
-                        fontSize: 16,
-                        color: Color(0xFF1E293B),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 32),
-                TextField(
-                  controller: nameCtrl,
-                  decoration: InputDecoration(
-                    labelText: 'ឈ្មោះថ្នាក់ (ឧ. ថ្នាក់ទី១ ក)...',
-                    labelStyle: const TextStyle(
-                      fontFamily: 'Khmer OS Battambang',
-                      fontSize: 13,
-                      color: Color(0xFF64748B),
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
                     ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                Builder(
-                  builder: (_) {
-                    final levelItems = <DropdownMenuItem<int>>[];
-                    final seenLevelIds = <int>{};
-                    for (final l in _levels) {
-                      final id = l['id'] is int
-                          ? l['id'] as int
-                          : int.tryParse(l['id'].toString());
-                      if (id != null && seenLevelIds.add(id)) {
-                        levelItems.add(
-                          DropdownMenuItem<int>(
-                            value: id,
-                            child: Text(
-                              '${l['name']} (${l['study_type']})',
-                              style: const TextStyle(
-                                fontFamily: 'Khmer OS Battambang',
-                                fontSize: 13,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        );
-                      }
-                    }
-                    final effectiveLevel =
-                        levelItems.any((i) => i.value == selLevel)
-                        ? selLevel
-                        : (levelItems.isNotEmpty
-                              ? levelItems.first.value
-                              : null);
-
-                    return DropdownButtonFormField<int>(
-                      // ignore: deprecated_member_use
-                      value: effectiveLevel,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        labelText: 'ជ្រើសរើសកម្រិតសិក្សា',
-                        labelStyle: const TextStyle(
-                          fontFamily: 'Khmer OS Battambang',
-                          fontSize: 13,
-                          color: Color(0xFF64748B),
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(
-                            color: Color(0xFFE2E8F0),
-                          ),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(
-                            color: Color(0xFFE2E8F0),
-                          ),
-                        ),
-                      ),
-                      items: levelItems,
-                      onChanged: (v) => setM(() => selLevel = v),
-                    );
-                  },
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: roomCtrl,
-                        decoration: InputDecoration(
-                          labelText: 'លេខបន្ទប់',
-                          labelStyle: const TextStyle(
-                            fontFamily: 'Khmer OS Battambang',
-                            fontSize: 13,
-                            color: Color(0xFF64748B),
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFE2E8F0),
-                            ),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFE2E8F0),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        // ignore: deprecated_member_use
-                        value: shift,
-                        decoration: InputDecoration(
-                          labelText: 'វេនសិក្សា',
-                          labelStyle: const TextStyle(
-                            fontFamily: 'Khmer OS Battambang',
-                            fontSize: 13,
-                            color: Color(0xFF64748B),
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFE2E8F0),
-                            ),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFE2E8F0),
-                            ),
-                          ),
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'Morning',
-                            child: Text(
-                              'វេនព្រឹក',
-                              style: TextStyle(
-                                fontFamily: 'Khmer OS Battambang',
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Afternoon',
-                            child: Text(
-                              'វេនរសៀល',
-                              style: TextStyle(
-                                fontFamily: 'Khmer OS Battambang',
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Both',
-                            child: Text(
-                              'ពេញមួយថ្ងៃ',
-                              style: TextStyle(
-                                fontFamily: 'Khmer OS Battambang',
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                        ],
-                        onChanged: (v) => setM(() => shift = v!),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 32),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          side: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
-                        onPressed: () => Navigator.pop(ctx),
-                        child: const Text(
-                          'បោះបង់',
-                          style: TextStyle(
-                            fontFamily: 'Khmer OS Battambang',
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF64748B),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF10B981),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        onPressed: () async {
-                          if (nameCtrl.text.isEmpty) return;
-                          try {
-                            await http.post(
-                              Uri.parse('$baseUrl/classrooms'),
-                              headers: {'Content-Type': 'application/json'},
-                              body: jsonEncode({
-                                'class_name': nameCtrl.text.trim(),
-                                'grade_level_id': selLevel,
-                                'room_number': roomCtrl.text.trim(),
-                                'shift': shift,
-                              }),
-                            );
-                            if (ctx.mounted) Navigator.pop(ctx);
-                            _loadAll();
-                          } catch (e) {
-                            if (ctx.mounted) {
-                              ScaffoldMessenger.of(ctx).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'មិនអាចរក្សាទុកថ្នាក់រៀនបានទេ៖ $e',
-                                    style: const TextStyle(
-                                      fontFamily: 'Khmer OS Battambang',
-                                    ),
-                                  ),
-                                  backgroundColor: Colors.red,
+                  const SizedBox(height: 18),
+                  Builder(
+                    builder: (_) {
+                      final levelItems = <DropdownMenuItem<int>>[];
+                      final seenLevelIds = <int>{};
+                      for (final l in _levels) {
+                        final id = l['id'] is int
+                            ? l['id'] as int
+                            : int.tryParse(l['id'].toString());
+                        if (id != null && seenLevelIds.add(id)) {
+                          levelItems.add(
+                            DropdownMenuItem<int>(
+                              value: id,
+                              child: Text(
+                                '${l['name']} (${l['study_type']})',
+                                style: const TextStyle(
+                                  fontFamily: 'Khmer OS Battambang',
+                                  fontSize: 13,
                                 ),
-                              );
-                            }
-                          }
-                        },
-                        child: const Text(
-                          'រក្សាទុក',
-                          style: TextStyle(
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          );
+                        }
+                      }
+                      final effectiveLevel =
+                          levelItems.any((i) => i.value == selLevel)
+                          ? selLevel
+                          : (levelItems.isNotEmpty
+                                ? levelItems.first.value
+                                : null);
+
+                      return DropdownButtonFormField<int>(
+                        value: effectiveLevel,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          labelText: 'ជ្រើសរើសកម្រិតសិក្សា',
+                          labelStyle: const TextStyle(
                             fontFamily: 'Khmer OS Battambang',
-                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: Color(0xFF64748B),
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFE2E8F0),
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFE2E8F0),
+                            ),
+                          ),
+                        ),
+                        items: levelItems,
+                        onChanged: (v) => setM(() => selLevel = v),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: roomCtrl,
+                          decoration: InputDecoration(
+                            labelText: 'លេខបន្ទប់',
+                            labelStyle: const TextStyle(
+                              fontFamily: 'Khmer OS Battambang',
+                              fontSize: 13,
+                              color: Color(0xFF64748B),
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(
+                                color: Color(0xFFE2E8F0),
+                              ),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(
+                                color: Color(0xFFE2E8F0),
+                              ),
+                            ),
                           ),
                         ),
                       ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: shift,
+                          decoration: InputDecoration(
+                            labelText: 'វេនសិក្សា',
+                            labelStyle: const TextStyle(
+                              fontFamily: 'Khmer OS Battambang',
+                              fontSize: 13,
+                              color: Color(0xFF64748B),
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(
+                                color: Color(0xFFE2E8F0),
+                              ),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(
+                                color: Color(0xFFE2E8F0),
+                              ),
+                            ),
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'Morning',
+                              child: Text(
+                                'វេនព្រឹក',
+                                style: TextStyle(
+                                  fontFamily: 'Khmer OS Battambang',
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Afternoon',
+                              child: Text(
+                                'វេនរសៀល',
+                                style: TextStyle(
+                                  fontFamily: 'Khmer OS Battambang',
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Both',
+                              child: Text(
+                                'ពេញមួយថ្ងៃ',
+                                style: TextStyle(
+                                  fontFamily: 'Khmer OS Battambang',
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ],
+                          onChanged: (v) => setM(() => shift = v!),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  // Dropdown គ្រូទទួលបន្ទុក
+                  DropdownButtonFormField<String>(
+                    value: selectedTeacher,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: 'គ្រូទទួលបន្ទុក (In-charge Teacher)',
+                      prefixIcon: const Icon(Icons.person_outline, size: 20, color: Color(0xFF4F46E5)),
+                      labelStyle: const TextStyle(
+                        fontFamily: 'Khmer OS Battambang',
+                        fontSize: 13,
+                        color: Color(0xFF64748B),
+                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                      ),
                     ),
-                  ],
-                ),
-              ],
+                    items: _teacherNames.map((t) {
+                      return DropdownMenuItem<String>(
+                        value: t,
+                        child: Text(t, style: const TextStyle(fontFamily: 'Khmer OS Battambang', fontSize: 13)),
+                      );
+                    }).toList(),
+                    onChanged: (v) => setM(() => selectedTeacher = v!),
+                  ),
+                  const SizedBox(height: 18),
+                  // Dropdown ឆ្នាំសិក្សា
+                  DropdownButtonFormField<String>(
+                    value: academicYear,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: 'ឆ្នាំសិក្សា (Academic Year)',
+                      prefixIcon: const Icon(Icons.calendar_today_outlined, size: 18, color: Color(0xFF10B981)),
+                      labelStyle: const TextStyle(
+                        fontFamily: 'Khmer OS Battambang',
+                        fontSize: 13,
+                        color: Color(0xFF64748B),
+                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: '2024-2025', child: Text('ឆ្នាំសិក្សា ២០២៤ - ២០២៥')),
+                      DropdownMenuItem(value: '2025-2026', child: Text('ឆ្នាំសិក្សា ២០២៥ - ២០២៦')),
+                      DropdownMenuItem(value: '2026-2027', child: Text('ឆ្នាំសិក្សា ២០២៦ - ២០២៧')),
+                    ],
+                    onChanged: (v) => setM(() => academicYear = v!),
+                  ),
+                  const SizedBox(height: 28),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            side: const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text(
+                            'បោះបង់',
+                            style: TextStyle(
+                              fontFamily: 'Khmer OS Battambang',
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF10B981),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: () async {
+                            if (nameCtrl.text.isEmpty) return;
+                            try {
+                              await http.post(
+                                Uri.parse('$baseUrl/classrooms'),
+                                headers: {'Content-Type': 'application/json'},
+                                body: jsonEncode({
+                                  'class_name': nameCtrl.text.trim(),
+                                  'grade_level_id': selLevel,
+                                  'room_number': roomCtrl.text.trim(),
+                                  'shift': shift,
+                                  'teacher_name': selectedTeacher,
+                                  'academic_year': academicYear,
+                                }),
+                              );
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              _loadAll();
+                            } catch (e) {
+                              if (ctx.mounted) {
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'មិនអាចរក្សាទុកថ្នាក់រៀនបានទេ៖ $e',
+                                      style: const TextStyle(
+                                        fontFamily: 'Khmer OS Battambang',
+                                      ),
+                                    ),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          child: const Text(
+                            'រក្សាទុក',
+                            style: TextStyle(
+                              fontFamily: 'Khmer OS Battambang',
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _editClassroomDialog(Map<String, dynamic> c) {
+    final nameCtrl = TextEditingController(text: c['class_name']?.toString() ?? '');
+    final roomCtrl = TextEditingController(text: c['room_number']?.toString() ?? 'Room-01');
+    int? selLevel = c['grade_level_id'] is int
+        ? c['grade_level_id'] as int
+        : int.tryParse(c['grade_level_id']?.toString() ?? '');
+    String shift = c['shift']?.toString() ?? 'Morning';
+    String selectedTeacher = c['teacher_name']?.toString() ?? _teacherNames.first;
+    if (!_teacherNames.contains(selectedTeacher)) {
+      _teacherNames.add(selectedTeacher);
+    }
+    String academicYear = c['academic_year']?.toString() ?? '2025-2026';
+    if (!['2024-2025', '2025-2026', '2026-2027'].contains(academicYear)) {
+      academicYear = '2025-2026';
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setM) => Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Container(
+            width: 440,
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEFF6FF),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.edit_note,
+                          color: Color(0xFF3B82F6),
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      const Text(
+                        'កែប្រែទិន្នន័យថ្នាក់រៀន',
+                        style: TextStyle(
+                          fontFamily: 'Khmer OS Muol Light',
+                          fontSize: 16,
+                          color: Color(0xFF1E293B),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 28),
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'ឈ្មោះថ្នាក់',
+                      labelStyle: const TextStyle(
+                        fontFamily: 'Khmer OS Battambang',
+                        fontSize: 13,
+                        color: Color(0xFF64748B),
+                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Builder(
+                    builder: (_) {
+                      final levelItems = <DropdownMenuItem<int>>[];
+                      final seenLevelIds = <int>{};
+                      for (final l in _levels) {
+                        final id = l['id'] is int ? l['id'] as int : int.tryParse(l['id'].toString());
+                        if (id != null && seenLevelIds.add(id)) {
+                          levelItems.add(
+                            DropdownMenuItem<int>(
+                              value: id,
+                              child: Text(
+                                '${l['name']} (${l['study_type']})',
+                                style: const TextStyle(fontFamily: 'Khmer OS Battambang', fontSize: 13),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          );
+                        }
+                      }
+                      final effectiveLevel = levelItems.any((i) => i.value == selLevel)
+                          ? selLevel
+                          : (levelItems.isNotEmpty ? levelItems.first.value : null);
+
+                      return DropdownButtonFormField<int>(
+                        value: effectiveLevel,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          labelText: 'ជ្រើសរើសកម្រិតសិក្សា',
+                          labelStyle: const TextStyle(fontFamily: 'Khmer OS Battambang', fontSize: 13, color: Color(0xFF64748B)),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                        ),
+                        items: levelItems,
+                        onChanged: (v) => setM(() => selLevel = v),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: roomCtrl,
+                          decoration: InputDecoration(
+                            labelText: 'លេខបន្ទប់',
+                            labelStyle: const TextStyle(fontFamily: 'Khmer OS Battambang', fontSize: 13, color: Color(0xFF64748B)),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: shift,
+                          decoration: InputDecoration(
+                            labelText: 'វេនសិក្សា',
+                            labelStyle: const TextStyle(fontFamily: 'Khmer OS Battambang', fontSize: 13, color: Color(0xFF64748B)),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                            ),
+                          ),
+                          items: const [
+                            DropdownMenuItem(value: 'Morning', child: Text('វេនព្រឹក', style: TextStyle(fontFamily: 'Khmer OS Battambang', fontSize: 13))),
+                            DropdownMenuItem(value: 'Afternoon', child: Text('វេនរសៀល', style: TextStyle(fontFamily: 'Khmer OS Battambang', fontSize: 13))),
+                            DropdownMenuItem(value: 'Both', child: Text('ពេញមួយថ្ងៃ', style: TextStyle(fontFamily: 'Khmer OS Battambang', fontSize: 13))),
+                          ],
+                          onChanged: (v) => setM(() => shift = v!),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  // Dropdown គ្រូទទួលបន្ទុក
+                  DropdownButtonFormField<String>(
+                    value: selectedTeacher,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: 'គ្រូទទួលបន្ទុក (In-charge Teacher)',
+                      prefixIcon: const Icon(Icons.person_outline, size: 20, color: Color(0xFF4F46E5)),
+                      labelStyle: const TextStyle(fontFamily: 'Khmer OS Battambang', fontSize: 13, color: Color(0xFF64748B)),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                      ),
+                    ),
+                    items: _teacherNames.map((t) {
+                      return DropdownMenuItem<String>(
+                        value: t,
+                        child: Text(t, style: const TextStyle(fontFamily: 'Khmer OS Battambang', fontSize: 13)),
+                      );
+                    }).toList(),
+                    onChanged: (v) => setM(() => selectedTeacher = v!),
+                  ),
+                  const SizedBox(height: 18),
+                  // Dropdown ឆ្នាំសិក្សា
+                  DropdownButtonFormField<String>(
+                    value: academicYear,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: 'ឆ្នាំសិក្សា (Academic Year)',
+                      prefixIcon: const Icon(Icons.calendar_today_outlined, size: 18, color: Color(0xFF10B981)),
+                      labelStyle: const TextStyle(fontFamily: 'Khmer OS Battambang', fontSize: 13, color: Color(0xFF64748B)),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: '2024-2025', child: Text('ឆ្នាំសិក្សា ២០២៤ - ២០២៥')),
+                      DropdownMenuItem(value: '2025-2026', child: Text('ឆ្នាំសិក្សា ២០២៥ - ២០២៦')),
+                      DropdownMenuItem(value: '2026-2027', child: Text('ឆ្នាំសិក្សា ២០២៦ - ២០២៧')),
+                    ],
+                    onChanged: (v) => setM(() => academicYear = v!),
+                  ),
+                  const SizedBox(height: 28),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            side: const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('បោះបង់', style: TextStyle(fontFamily: 'Khmer OS Battambang', fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF3B82F6),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          onPressed: () async {
+                            if (nameCtrl.text.isEmpty) return;
+                            try {
+                              await http.put(
+                                Uri.parse('$baseUrl/classrooms/${c['id']}'),
+                                headers: {'Content-Type': 'application/json'},
+                                body: jsonEncode({
+                                  'class_name': nameCtrl.text.trim(),
+                                  'grade_level_id': selLevel,
+                                  'room_number': roomCtrl.text.trim(),
+                                  'shift': shift,
+                                  'capacity': c['capacity'] ?? 30,
+                                  'teacher_name': selectedTeacher,
+                                  'academic_year': academicYear,
+                                }),
+                              );
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              _loadAll();
+                            } catch (e) {
+                              if (ctx.mounted) {
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  SnackBar(
+                                    content: Text('មិនអាចកែប្រែថ្នាក់រៀនបានទេ៖ $e', style: const TextStyle(fontFamily: 'Khmer OS Battambang')),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          child: const Text('រក្សាទុកការកែប្រែ', style: TextStyle(fontFamily: 'Khmer OS Battambang', fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -828,275 +1364,6 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                         child: const Text(
                           'រក្សាទុក',
                           // ignore: deprecated_member_use
-                          style: TextStyle(
-                            fontFamily: 'Khmer OS Battambang',
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ignore: unused_element
-  void _editClassroomDialog(Map<String, dynamic> c) {
-    final nameCtrl = TextEditingController(text: c['class_name'] ?? '');
-    final roomCtrl = TextEditingController(text: c['room_number'] ?? 'Room-01');
-    int? selLevel = c['grade_level_id'];
-    String shift = c['shift'] ?? 'Morning';
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setM) => Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Container(
-            width: 450,
-            padding: const EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFECFDF5),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.edit_location_alt_rounded,
-                        color: Color(0xFF10B981),
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    const Text(
-                      'កែប្រែថ្នាក់រៀន',
-                      style: TextStyle(
-                        fontFamily: 'Khmer OS Muol Light',
-                        fontSize: 16,
-                        color: Color(0xFF1E293B),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 32),
-                TextField(
-                  controller: nameCtrl,
-                  decoration: InputDecoration(
-                    labelText: 'ឈ្មោះថ្នាក់រៀន *',
-                    labelStyle: const TextStyle(
-                      fontFamily: 'Khmer OS Battambang',
-                      fontSize: 13,
-                      color: Color(0xFF64748B),
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                DropdownButtonFormField<int>(
-                  // ignore: deprecated_member_use
-                  value: _levels.any((l) => l['id'] == selLevel) ? selLevel : null,
-                  decoration: InputDecoration(
-                    labelText: 'កម្រិតសិក្សា',
-                    labelStyle: const TextStyle(
-                      fontFamily: 'Khmer OS Battambang',
-                      fontSize: 13,
-                      color: Color(0xFF64748B),
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                    ),
-                  ),
-                  items: () {
-                    final seen = <int>{};
-                    final list = <DropdownMenuItem<int>>[];
-                    for (final l in _levels) {
-                      final id = l['id'] is int ? l['id'] as int : int.tryParse(l['id']?.toString() ?? '');
-                      if (id != null && seen.add(id)) {
-                        list.add(DropdownMenuItem(
-                          value: id,
-                          child: Text(
-                            '${l['name']} (${l['study_type']})',
-                            style: const TextStyle(
-                              fontFamily: 'Khmer OS Battambang',
-                              fontSize: 13,
-                            ),
-                          ),
-                        ));
-                      }
-                    }
-                    return list;
-                  }(),
-                  onChanged: (v) => setM(() => selLevel = v),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: roomCtrl,
-                        decoration: InputDecoration(
-                          labelText: 'លេខបន្ទប់',
-                          labelStyle: const TextStyle(
-                            fontFamily: 'Khmer OS Battambang',
-                            fontSize: 13,
-                            color: Color(0xFF64748B),
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFE2E8F0),
-                            ),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFE2E8F0),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        // ignore: deprecated_member_use
-                        value: shift,
-                        decoration: InputDecoration(
-                          labelText: 'វេនសិក្សា',
-                          labelStyle: const TextStyle(
-                            fontFamily: 'Khmer OS Battambang',
-                            fontSize: 13,
-                            color: Color(0xFF64748B),
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFE2E8F0),
-                            ),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFE2E8F0),
-                            ),
-                          ),
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'Morning',
-                            child: Text(
-                              'វេនព្រឹក',
-                              style: TextStyle(
-                                fontFamily: 'Khmer OS Battambang',
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Afternoon',
-                            child: Text(
-                              'វេនរសៀល',
-                              style: TextStyle(
-                                fontFamily: 'Khmer OS Battambang',
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Both',
-                            child: Text(
-                              'ពេញមួយថ្ងៃ',
-                              style: TextStyle(
-                                fontFamily: 'Khmer OS Battambang',
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                        ],
-                        onChanged: (v) => setM(() => shift = v!),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 32),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          side: const BorderSide(color: Color(0xFFE2E8F0)),
-                        ),
-                        onPressed: () => Navigator.pop(ctx),
-                        child: const Text(
-                          'បោះបង់',
-                          style: TextStyle(
-                            fontFamily: 'Khmer OS Battambang',
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF64748B),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF10B981),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        onPressed: () async {
-                          if (nameCtrl.text.isEmpty) return;
-                          await http.put(
-                            Uri.parse('$baseUrl/classrooms/${c['id']}'),
-                            headers: {'Content-Type': 'application/json'},
-                            body: jsonEncode({
-                              'class_name': nameCtrl.text.trim(),
-                              'grade_level_id': selLevel,
-                              'room_number': roomCtrl.text.trim(),
-                              'shift': shift,
-                            }),
-                          );
-                          if (ctx.mounted) Navigator.pop(ctx);
-                          _loadAll();
-                        },
-                        child: const Text(
-                          'រក្សាទុក',
                           style: TextStyle(
                             fontFamily: 'Khmer OS Battambang',
                             fontWeight: FontWeight.bold,
@@ -1346,8 +1613,18 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                   fontWeight: FontWeight.bold,
                 ),
                 tabs: const [
-                  Tab(text: 'បញ្ជីថ្នាក់រៀន (Classrooms)'),
-                  Tab(text: 'កម្រិតសិក្សា (Grade Levels)'),
+                  Tab(
+                    icon: Icon(Icons.meeting_room_outlined, size: 18),
+                    text: 'បញ្ជីថ្នាក់រៀន (Classrooms)',
+                  ),
+                  Tab(
+                    icon: Icon(Icons.layers_outlined, size: 18),
+                    text: 'កម្រិតសិក្សា (Grade Levels)',
+                  ),
+                  Tab(
+                    icon: Icon(Icons.table_chart_outlined, size: 18),
+                    text: 'តារាងរៀបចំថ្នាក់រៀន (Class Arrangement)',
+                  ),
                 ],
               ),
             ),
@@ -1362,7 +1639,11 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                     )
                   : TabBarView(
                       controller: _tabController,
-                      children: [_buildClassroomsTab(), _buildLevelsTab()],
+                      children: [
+                        _buildClassroomsTab(),
+                        _buildLevelsTab(),
+                        _buildArrangementTab(),
+                      ],
                     ),
             ),
           ],
@@ -1509,6 +1790,12 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
   }
 
   Widget _buildClassroomsTab() {
+    final filteredClasses = _classes.where((c) {
+      if (_selectedAcademicYear == 'ទាំងអស់ (All Years)') return true;
+      final year = c['academic_year']?.toString();
+      return year == null || year.isEmpty || year == _selectedAcademicYear;
+    }).toList();
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -1520,6 +1807,68 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
         borderRadius: BorderRadius.circular(16),
         child: Column(
           children: [
+            // Filter Bar for Academic Year
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF8FAFC),
+                border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.filter_alt_outlined, size: 18, color: Color(0xFF4F46E5)),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'ជ្រើសរើសឆ្នាំសិក្សា៖ ',
+                    style: TextStyle(
+                      fontFamily: 'Khmer OS Battambang',
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _selectedAcademicYear,
+                        isDense: true,
+                        style: const TextStyle(
+                          fontFamily: 'Khmer OS Battambang',
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1E293B),
+                        ),
+                        items: _academicYears
+                            .map((y) => DropdownMenuItem(value: y, child: Text(y)))
+                            .toList(),
+                        onChanged: (v) {
+                          if (v != null) {
+                            setState(() => _selectedAcademicYear = v);
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    'សរុប៖ ${filteredClasses.length} ថ្នាក់',
+                    style: const TextStyle(
+                      fontFamily: 'Khmer OS Battambang',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
             Container(
               color: const Color(0xFFF8FAFC),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -1528,6 +1877,8 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                   _headerCol('ថ្នាក់រៀន', 2),
                   _headerCol('កម្រិតសិក្សា', 2),
                   _headerCol('វេន/លេខបន្ទប់', 2),
+                  _headerCol('គ្រូទទួលបន្ទុក', 2),
+                  _headerCol('ឆ្នាំសិក្សា', 2),
                   _headerCol('ចំនួនសិស្ស', 1),
                   _headerCol('សកម្មភាព', 1, align: TextAlign.right),
                 ],
@@ -1535,10 +1886,10 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
             ),
             const Divider(height: 1, color: Color(0xFFE2E8F0)),
             Expanded(
-              child: _classes.isEmpty
+              child: filteredClasses.isEmpty
                   ? const Center(
                       child: Text(
-                        'មិនទាន់មានថ្នាក់រៀនទេ',
+                        'មិនទាន់មានថ្នាក់រៀនសម្រាប់ឆ្នាំសិក្សានេះទេ',
                         style: TextStyle(
                           fontFamily: 'Khmer OS Battambang',
                           color: Color(0xFF94A3B8),
@@ -1546,12 +1897,14 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                       ),
                     )
                   : ListView.separated(
-                      itemCount: _classes.length,
+                      itemCount: filteredClasses.length,
                       // ignore: unnecessary_underscores
                       separatorBuilder: (_, __) =>
                           const Divider(height: 1, color: Color(0xFFF1F5F9)),
                       itemBuilder: (ctx, i) {
-                        final c = _classes[i];
+                        final c = filteredClasses[i];
+                        final teacherName = (c['teacher_name'] ?? '').toString().trim();
+                        final academicYear = (c['academic_year'] ?? '2025-2026').toString().trim();
                         return Padding(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 24,
@@ -1576,13 +1929,16 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                                       ),
                                     ),
                                     const SizedBox(width: 12),
-                                    Text(
-                                      c['class_name'],
-                                      style: const TextStyle(
-                                        fontFamily: 'Khmer OS Battambang',
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                        color: Color(0xFF1E293B),
+                                    Expanded(
+                                      child: Text(
+                                        c['class_name'] ?? '',
+                                        style: const TextStyle(
+                                          fontFamily: 'Khmer OS Battambang',
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                          color: Color(0xFF1E293B),
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                   ],
@@ -1596,6 +1952,7 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                                     fontFamily: 'Khmer OS Battambang',
                                     color: Color(0xFF475569),
                                   ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                               Expanded(
@@ -1608,6 +1965,7 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                                       style: const TextStyle(
                                         fontFamily: 'Khmer OS Battambang',
                                         color: Color(0xFF1E293B),
+                                        fontSize: 13,
                                       ),
                                     ),
                                     Text(
@@ -1622,10 +1980,78 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                                 ),
                               ),
                               Expanded(
+                                flex: 2,
+                                child: Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 12,
+                                      backgroundColor: const Color(0xFFEEF2FF),
+                                      child: Text(
+                                        teacherName.isNotEmpty
+                                            ? teacherName.characters.first
+                                            : 'T',
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF4F46E5),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        teacherName.isNotEmpty
+                                            ? teacherName
+                                            : 'មិនទាន់ចាត់តាំង',
+                                        style: TextStyle(
+                                          fontFamily: 'Khmer OS Battambang',
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: teacherName.isNotEmpty
+                                              ? const Color(0xFF1E293B)
+                                              : const Color(0xFF94A3B8),
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF1F5F9),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: const Color(0xFFCBD5E1),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      academicYear.isNotEmpty
+                                          ? academicYear
+                                          : '2025-2026',
+                                      style: const TextStyle(
+                                        fontFamily: 'Khmer OS Battambang',
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF475569),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
                                 flex: 1,
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
+                                    horizontal: 8,
                                     vertical: 4,
                                   ),
                                   decoration: BoxDecoration(
@@ -1657,6 +2083,12 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.end,
                                   children: [
+                                    _actionBtn(
+                                      Icons.edit_outlined,
+                                      const Color(0xFF3B82F6),
+                                      () => _editClassroomDialog(c),
+                                    ),
+                                    const SizedBox(width: 6),
                                     _actionBtn(
                                       Icons.delete_outline_rounded,
                                       const Color(0xFFEF4444),
@@ -1707,11 +2139,1114 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
       child: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          // ignore: deprecated_member_use
-          color: color.withOpacity(0.1),
+          color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(icon, size: 18, color: color),
+      ),
+    );
+  }
+
+  Widget _buildArrangementTab() {
+    final store = AppDataStore.instance;
+    return AnimatedBuilder(
+      animation: store,
+      builder: (ctx, _) {
+        const oldStudentsTotal = 88;
+        const newStudentsMerged = 97;
+        const newStudentsSeparate = 109;
+        final activeNewTotal =
+            _countMergedRooms ? newStudentsMerged : newStudentsSeparate;
+
+        return Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Top Toolbar
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFFBFDBFE)),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.verified,
+                                  size: 16, color: Color(0xFF2563EB)),
+                              SizedBox(width: 6),
+                              Text(
+                                'ឯកសាររៀបចំថ្នាក់ផ្លូវការ (Official Arrangement Doc)',
+                                style: TextStyle(
+                                  fontFamily: 'Khmer OS Battambang',
+                                  color: Color(0xFF1D4ED8),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFFD97706),
+                            side: const BorderSide(color: Color(0xFFFBBF24)),
+                          ),
+                          icon: Icon(
+                            _showInsights
+                                ? Icons.visibility_off_outlined
+                                : Icons.lightbulb_outline,
+                            size: 16,
+                          ),
+                          label: Text(
+                            _showInsights
+                                ? 'លាក់ផ្ទាំងវិភាគ'
+                                : 'បង្ហាញការវិភាគ (Insights)',
+                            style: const TextStyle(
+                                fontFamily: 'Khmer OS Battambang',
+                                fontSize: 12),
+                          ),
+                          onPressed: () =>
+                              setState(() => _showInsights = !_showInsights),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.add, size: 16),
+                          label: const Text(
+                            'បន្ថែមជួរថ្មី',
+                            style: TextStyle(
+                                fontFamily: 'Khmer OS Battambang',
+                                fontSize: 12),
+                          ),
+                          onPressed: () => _openAddArrangementRowModal(),
+                        ),
+                        const SizedBox(width: 10),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1E3A8A),
+                          ),
+                          icon: const Icon(Icons.print,
+                              color: Colors.white, size: 16),
+                          label: const Text(
+                            'បោះពុម្ពឯកសារ (Print Sheet)',
+                            style: TextStyle(
+                              fontFamily: 'Khmer OS Battambang',
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    'កំពុងបញ្ជូនឯកសារ English Class Arrangement ទៅកាន់ម៉ាស៊ីនបោះពុម្ព...'),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const Divider(height: 24),
+
+                // KEY INSIGHTS & ANOMALIES
+                if (_showInsights) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 24),
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFFBEB),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                          color: const Color(0xFFFDE68A), width: 1.2),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.warning_amber_rounded,
+                                    color: Color(0xFFD97706), size: 24),
+                                SizedBox(width: 8),
+                                Text(
+                                  'ចំណុចសំខាន់ៗ និងភាពមិនប្រក្រតីដែលគួរកត់សម្គាល់ (Key Insights & Anomalies)',
+                                  style: TextStyle(
+                                    fontFamily: 'Khmer OS Battambang',
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: Color(0xFF92400E),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                    color: const Color(0xFFFCD34D)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Text(
+                                    'រាប់ជាថ្នាក់ប្តូរវេន (Handover): ',
+                                    style: TextStyle(
+                                      fontFamily: 'Khmer OS Battambang',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF78350F),
+                                    ),
+                                  ),
+                                  Switch(
+                                    value: _countMergedRooms,
+                                    activeThumbColor: const Color(0xFFD97706),
+                                    onChanged: (v) =>
+                                        setState(() => _countMergedRooms = v),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFFDE68A)),
+                          ),
+                          child: const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.meeting_room,
+                                      size: 16, color: Color(0xFFDC2626)),
+                                  SizedBox(width: 6),
+                                  Text(
+                                    '១. ការជាន់គ្នានៃបន្ទប់រៀន និងកម្រិតសិក្សា (ជួរទី ៣ និងទី ៧)៖',
+                                    style: TextStyle(
+                                      fontFamily: 'Khmer OS Battambang',
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                      color: Color(0xFFB45309),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                '• គ្រូឈ្មោះ Ry Sreyneang (ល.រ ទី ៣) និងគ្រូឈ្មោះ Pen Rina (ល.រ ទី ៧) ត្រូវបានដាក់ឱ្យបង្រៀនកម្រិត EFL3B នៅ បន្ទប់ 01 និងមានចំនួនសិស្ស ១២ នាក់ ដូចគ្នាបេះបិទ។',
+                                style: TextStyle(
+                                  fontFamily: 'Khmer OS Battambang',
+                                  fontSize: 12,
+                                  height: 1.4,
+                                  color: Color(0xFF1E293B),
+                                ),
+                              ),
+                              Text(
+                                '• ការសន្និដ្ឋាន & ដោះស្រាយ៖ នេះជាការប្តូរវេនគ្រូបង្រៀន (ពី Ry Sreyneang មក Pen Rina ទើបមានសញ្ញាធីក ✓ នៅជួរទី ៧) ឬជាការបង្រៀនឆ្លាស់ថ្ងៃគ្នា (ចន្ទ-ពុធ-សុក្រ និង អង្គារ-ព្រហស្បតិ៍) ដើម្បីកុំឱ្យជាន់បន្ទប់ 01។',
+                                style: TextStyle(
+                                  fontFamily: 'Khmer OS Battambang',
+                                  fontSize: 12,
+                                  height: 1.4,
+                                  color: Color(0xFF0F766E),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFFDE68A)),
+                          ),
+                          child: const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.merge_type,
+                                      size: 16, color: Color(0xFF2563EB)),
+                                  SizedBox(width: 6),
+                                  Text(
+                                    '២. ការបង្រួមថ្នាក់រៀន (Class Merging)៖',
+                                    style: TextStyle(
+                                      fontFamily: 'Khmer OS Battambang',
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                      color: Color(0xFF1D4ED8),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                '• គ្រូ Phi Sreynuch៖ កាលពីវគ្គចាស់គាត់បង្រៀន ២ ថ្នាក់ផ្សេងគ្នា (EFL 3A និង EFL 5B) ប៉ុន្តែវគ្គថ្មីនេះត្រូវបានបង្រួមឱ្យបង្រៀនតែ ១ ថ្នាក់គត់គឺ EFL 5A ដែលមានសិស្សសរុប ២០ នាក់ (កើនពី ១៦ នាក់)។',
+                                style: TextStyle(
+                                  fontFamily: 'Khmer OS Battambang',
+                                  fontSize: 12,
+                                  height: 1.4,
+                                  color: Color(0xFF1E293B),
+                                ),
+                              ),
+                              Text(
+                                '• គ្រូ Sophann May៖ ចំនួនសិស្សកើនឡើងទ្វេដងពី ១០ នាក់ ដល់ ២២ នាក់ (ច្រើនជាងគេក្នុងតារាង) ដោយសារមានការបូកបញ្ចូលសិស្សពីថ្នាក់របស់គ្រូ Tous Sreymom ("Added Mom\'s class")។',
+                                style: TextStyle(
+                                  fontFamily: 'Khmer OS Battambang',
+                                  fontSize: 12,
+                                  height: 1.4,
+                                  color: Color(0xFF1E293B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                // KPI Stat Cards
+                Row(
+                  children: [
+                    _buildKpiCard('សិស្សវគ្គចាស់ (Old Term)',
+                        '$oldStudentsTotal នាក់', Icons.history,
+                        const Color(0xFF64748B)),
+                    _buildKpiCard(
+                      _countMergedRooms
+                          ? 'សិស្សវគ្គថ្មី (Handover Mode)'
+                          : 'សិស្សវគ្គថ្មី (Separate Mode)',
+                      '$activeNewTotal នាក់',
+                      Icons.groups,
+                      const Color(0xFF2563EB),
+                      subtitle: _countMergedRooms
+                          ? 'កើនឡើង ៩ នាក់ (+10.2%)'
+                          : 'កើនឡើង ២១ នាក់ (+23.8%)',
+                    ),
+                    _buildKpiCard(
+                        'បន្ទប់រៀនសរុប (Rooms)',
+                        '៦ បន្ទប់ (O1 - O6)',
+                        Icons.meeting_room,
+                        const Color(0xFFD97706)),
+                    _buildKpiCard(
+                        'គ្រូបង្រៀនទទួលបន្ទុក',
+                        '${store.classArrangements.length} រូប',
+                        Icons.badge,
+                        const Color(0xFF0D9488)),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // Document Header (Matching the Paper Photo)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 58,
+                          height: 58,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: const Color(0xFF1E3A8A)
+                                .withValues(alpha: 0.08),
+                            border: Border.all(
+                                color: const Color(0xFF1E3A8A), width: 1.5),
+                          ),
+                          child: const Center(
+                            child: Icon(Icons.school,
+                                color: Color(0xFF1E3A8A), size: 32),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Bright Light School',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                              color: Color(0xFF0F172A)),
+                        ),
+                        const Text(
+                          'Ochrov Campus',
+                          style: TextStyle(
+                              fontSize: 10,
+                              color: Color(0xFF64748B),
+                              fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 20),
+                    const Expanded(
+                      child: Column(
+                        children: [
+                          Text(
+                            'English Class Arrangement Term 3 Year 4',
+                            style: TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF0F172A),
+                              letterSpacing: 0.3,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            '(ការរៀបចំថ្នាក់ភាសាអង់គ្លេស ត្រីមាសទី ៣ ឆ្នាំទី ៤)',
+                            style: TextStyle(
+                              fontFamily: 'Khmer OS Muol Light',
+                              fontSize: 14,
+                              color: Color(0xFF1E3A8A),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          SizedBox(height: 6),
+                          Text(
+                            'Evening Classes (ថ្នាក់ពេលល្ងាច)',
+                            style: TextStyle(
+                              fontFamily: 'Khmer OS Battambang',
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF334155),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 78),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                // Table
+                Table(
+                  border: TableBorder.all(
+                    color: const Color(0xFF0F172A),
+                    width: 1.0,
+                  ),
+                  columnWidths: const {
+                    0: FixedColumnWidth(46),
+                    1: FlexColumnWidth(1.6),
+                    2: FlexColumnWidth(1.8),
+                    3: FixedColumnWidth(90),
+                    4: FlexColumnWidth(1.6),
+                    5: FixedColumnWidth(70),
+                    6: FixedColumnWidth(90),
+                    7: FlexColumnWidth(1.8),
+                    8: FixedColumnWidth(64),
+                  },
+                  children: [
+                    const TableRow(
+                      decoration: BoxDecoration(color: Color(0xFFF1F5F9)),
+                      children: [
+                        _ArrangementTableHeaderCell('Nº'),
+                        _ArrangementTableHeaderCell("Teacher's name"),
+                        _ArrangementTableHeaderCell('Old term level'),
+                        _ArrangementTableHeaderCell('Students amount'),
+                        _ArrangementTableHeaderCell('New term level'),
+                        _ArrangementTableHeaderCell('Room'),
+                        _ArrangementTableHeaderCell('Students amount'),
+                        _ArrangementTableHeaderCell('Others'),
+                        _ArrangementTableHeaderCell('សកម្មភាព'),
+                      ],
+                    ),
+                    ...store.classArrangements.asMap().entries.map((entry) {
+                      final idx = entry.key;
+                      final item = entry.value;
+                      final isOthersHighlighted =
+                          item.others.contains("Mom's");
+                      final isRoomConflict = item.room == 'O1';
+
+                      return TableRow(
+                        decoration: isRoomConflict
+                            ? BoxDecoration(
+                                color: const Color(0xFFFEF2F2)
+                                    .withValues(alpha: 0.5))
+                            : null,
+                        children: [
+                          _ArrangementTableCell('${item.no}', isCenter: true),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.teacherName,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13),
+                                ),
+                                if (item.no == 3)
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 2),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 4, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFEF3C7),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text(
+                                      '⚠️ ជាន់បន្ទប់ O1 ជាមួយ ល.រ 7',
+                                      style: TextStyle(
+                                        fontFamily: 'Khmer OS Battambang',
+                                        fontSize: 9,
+                                        color: Color(0xFFB45309),
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                if (item.no == 7)
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 2),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 4, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFDCFCE7),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text(
+                                      '✓ ប្តូរវេនពី Ry Sreyneang',
+                                      style: TextStyle(
+                                        fontFamily: 'Khmer OS Battambang',
+                                        fontSize: 9,
+                                        color: Color(0xFF15803D),
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(item.oldTermLevel,
+                                    style: const TextStyle(fontSize: 12.5)),
+                                if (item.no == 2)
+                                  const Text(
+                                    '🔗 បង្រួមពី ២ ថ្នាក់ (16នាក់)',
+                                    style: TextStyle(
+                                      fontFamily: 'Khmer OS Battambang',
+                                      fontSize: 9.5,
+                                      color: Color(0xFF2563EB),
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          _ArrangementTableCell(item.oldStudentsCount,
+                              isCenter: true),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 10),
+                            color:
+                                const Color(0xFFDCFCE7).withValues(alpha: 0.6),
+                            child: Text(
+                              item.newTermLevel,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                                color: Color(0xFF065F46),
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 10),
+                            color: isRoomConflict
+                                ? const Color(0xFFFCA5A5)
+                                    .withValues(alpha: 0.5)
+                                : const Color(0xFFFED7AA)
+                                    .withValues(alpha: 0.6),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  item.room,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                    color: isRoomConflict
+                                        ? const Color(0xFF991B1B)
+                                        : const Color(0xFF9A3412),
+                                  ),
+                                ),
+                                if (isRoomConflict) ...[
+                                  const SizedBox(width: 2),
+                                  const Icon(Icons.error_outline,
+                                      size: 12, color: Color(0xFFDC2626)),
+                                ],
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 10),
+                            alignment: Alignment.center,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  item.newStudentsCount,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13),
+                                ),
+                                if (item.no == 7) ...[
+                                  const SizedBox(width: 4),
+                                  const Icon(Icons.check,
+                                      size: 14, color: Color(0xFF16A34A)),
+                                ],
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 10),
+                            color: isOthersHighlighted
+                                ? const Color(0xFFFEF08A)
+                                : Colors.transparent,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  item.others,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: isOthersHighlighted
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                    color: isOthersHighlighted
+                                        ? const Color(0xFF854D0E)
+                                        : const Color(0xFF334155),
+                                  ),
+                                ),
+                                if (item.no == 4)
+                                  const Text(
+                                    '👥 ២២ នាក់ (ច្រើនជាងគេ)',
+                                    style: TextStyle(
+                                      fontFamily: 'Khmer OS Battambang',
+                                      fontSize: 9,
+                                      color: Color(0xFF1D4ED8),
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                InkWell(
+                                  onTap: () =>
+                                      _openAddArrangementRowModal(item, idx),
+                                  child: const Icon(Icons.edit,
+                                      size: 16, color: Color(0xFF2563EB)),
+                                ),
+                                const SizedBox(width: 6),
+                                InkWell(
+                                  onTap: () =>
+                                      store.deleteClassArrangement(idx),
+                                  child: const Icon(Icons.delete_outline,
+                                      size: 16, color: Color(0xFFDC2626)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    }),
+                  ],
+                ),
+                const SizedBox(height: 36),
+
+                // Signature & Approval
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      width: 320,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Date: ${store.classArrangementApprovedDate}',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: Color(0xFF0F172A)),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'Seen and Approved (អ្នកពិនិត្យ និងអនុម័ត):',
+                            style: TextStyle(
+                              fontFamily: 'Khmer OS Battambang',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Color(0xFF1E3A8A),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          if (store.isClassArrangementApproved)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFDCFCE7),
+                                borderRadius: BorderRadius.circular(8),
+                                border:
+                                    Border.all(color: const Color(0xFF86EFAC)),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.verified,
+                                      color: Color(0xFF16A34A), size: 18),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    '[ បានអនុម័ត & ចុះហត្ថលេខារួច ]',
+                                    style: TextStyle(
+                                      fontFamily: 'Khmer OS Battambang',
+                                      color: Color(0xFF16A34A),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF2563EB),
+                                foregroundColor: Colors.white,
+                              ),
+                              icon: const Icon(Icons.check_circle_outline,
+                                  size: 16),
+                              label: const Text(
+                                'ចុចអនុម័ត និងចុះហត្ថលេខា',
+                                style: TextStyle(
+                                    fontFamily: 'Khmer OS Battambang',
+                                    fontSize: 12),
+                              ),
+                              onPressed: () =>
+                                  store.toggleArrangementApproval(),
+                            ),
+                          const SizedBox(height: 16),
+                          Container(
+                            height: 1,
+                            width: 180,
+                            color: const Color(0xFF94A3B8),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            store.classArrangementApprovedBy,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: Color(0xFF0F172A)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      width: 320,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Date: ${store.classArrangementPreparedDate}',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: Color(0xFF0F172A)),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'Prepare by (អ្នករៀបចំ):',
+                            style: TextStyle(
+                              fontFamily: 'Khmer OS Battambang',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Color(0xFF1E3A8A),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                              border:
+                                  Border.all(color: const Color(0xFFCBD5E1)),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.draw,
+                                    color: Color(0xFF2563EB), size: 18),
+                                SizedBox(width: 8),
+                                Text(
+                                  '✍️ Ven Leapheng (ហត្ថលេខាមានស្រាប់)',
+                                  style: TextStyle(
+                                    fontFamily: 'Khmer OS Battambang',
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF1E293B),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Container(
+                            height: 1,
+                            width: 180,
+                            color: const Color(0xFF94A3B8),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            store.classArrangementPreparedBy,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: Color(0xFF0F172A)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _openAddArrangementRowModal(
+      [ClassArrangementRow? existingRow, int? editIndex]) {
+    final store = AppDataStore.instance;
+    final teacherCtrl =
+        TextEditingController(text: existingRow?.teacherName ?? '');
+    final oldLevelCtrl =
+        TextEditingController(text: existingRow?.oldTermLevel ?? '');
+    final oldStudentsCtrl =
+        TextEditingController(text: existingRow?.oldStudentsCount ?? '');
+    final newLevelCtrl =
+        TextEditingController(text: existingRow?.newTermLevel ?? '');
+    final roomCtrl =
+        TextEditingController(text: existingRow?.room ?? 'O1');
+    final newStudentsCtrl =
+        TextEditingController(text: existingRow?.newStudentsCount ?? '');
+    final othersCtrl =
+        TextEditingController(text: existingRow?.others ?? '');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          editIndex == null
+              ? 'បន្ថែមជួររៀបចំថ្នាក់រៀនថ្មី'
+              : 'កែប្រែទិន្នន័យរៀបចំថ្នាក់រៀន',
+          style:
+              const TextStyle(fontFamily: 'Khmer OS Muol Light', fontSize: 16),
+        ),
+        content: SizedBox(
+          width: 450,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: teacherCtrl,
+                  decoration: const InputDecoration(
+                    labelText: "Teacher's name (ឈ្មោះគ្រូបង្រៀន)",
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: TextField(
+                        controller: oldLevelCtrl,
+                        decoration: const InputDecoration(
+                            labelText: 'Old term level',
+                            border: OutlineInputBorder()),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: oldStudentsCtrl,
+                        decoration: const InputDecoration(
+                            labelText: 'Old Students',
+                            border: OutlineInputBorder()),
+                        keyboardType: TextInputType.number,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: TextField(
+                        controller: newLevelCtrl,
+                        decoration: const InputDecoration(
+                            labelText: 'New term level',
+                            border: OutlineInputBorder()),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: roomCtrl,
+                        decoration: const InputDecoration(
+                            labelText: 'Room (ឧ. O1-O6)',
+                            border: OutlineInputBorder()),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: newStudentsCtrl,
+                        decoration: const InputDecoration(
+                            labelText: 'New Students',
+                            border: OutlineInputBorder()),
+                        keyboardType: TextInputType.number,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 2,
+                      child: TextField(
+                        controller: othersCtrl,
+                        decoration: const InputDecoration(
+                            labelText: 'Others (ផ្សេងៗ)',
+                            border: OutlineInputBorder()),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('បោះបង់',
+                style: TextStyle(fontFamily: 'Khmer OS Battambang')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1E3A8A)),
+            onPressed: () {
+              if (teacherCtrl.text.isNotEmpty && newLevelCtrl.text.isNotEmpty) {
+                final row = ClassArrangementRow(
+                  no: editIndex != null
+                      ? existingRow!.no
+                      : store.classArrangements.length + 1,
+                  teacherName: teacherCtrl.text,
+                  oldTermLevel:
+                      oldLevelCtrl.text.isEmpty ? '-' : oldLevelCtrl.text,
+                  oldStudentsCount:
+                      oldStudentsCtrl.text.isEmpty ? '-' : oldStudentsCtrl.text,
+                  newTermLevel: newLevelCtrl.text,
+                  room: roomCtrl.text,
+                  newStudentsCount: newStudentsCtrl.text,
+                  others: othersCtrl.text,
+                );
+
+                if (editIndex == null) {
+                  store.addClassArrangement(row);
+                } else {
+                  store.updateClassArrangement(editIndex, row);
+                }
+                Navigator.pop(ctx);
+              }
+            },
+            child: const Text('រក្សាទុក',
+                style: TextStyle(
+                    color: Colors.white, fontFamily: 'Khmer OS Battambang')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildKpiCard(String title, String value, IconData icon, Color color,
+      {String? subtitle}) {
+    return Expanded(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: color, size: 22),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontFamily: 'Khmer OS Battambang',
+                      fontSize: 11,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                  Text(
+                    value,
+                    style: const TextStyle(
+                      fontFamily: 'Khmer OS Battambang',
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  if (subtitle != null)
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontFamily: 'Khmer OS Battambang',
+                        fontSize: 10,
+                        color: color,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ArrangementTableHeaderCell extends StatelessWidget {
+  final String title;
+  const _ArrangementTableHeaderCell(this.title);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 11,
+          color: Color(0xFF0F172A),
+        ),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+}
+
+class _ArrangementTableCell extends StatelessWidget {
+  final String text;
+  final bool isCenter;
+
+  const _ArrangementTableCell(this.text, {this.isCenter = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      child: Text(
+        text,
+        textAlign: isCenter ? TextAlign.center : TextAlign.start,
+        style: const TextStyle(
+          fontSize: 13,
+          color: Color(0xFF0F172A),
+        ),
       ),
     );
   }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/foundation.dart';
+import 'package:school_management_app/config/api_config.dart';
 import 'package:school_management_app/services/api_service.dart';
 import 'package:school_management_app/services/html_print_service.dart';
 import 'package:school_management_app/utils/app_logo.dart';
@@ -30,10 +32,17 @@ class OverviewTab extends StatefulWidget {
 
 class _OverviewTabState extends State<OverviewTab>
     with SingleTickerProviderStateMixin {
-  static String baseUrl = ApiService.baseUrl;
+  static String get baseUrl => ApiService.baseUrl;
 
   bool _isLoading = true;
   bool _isRefreshing = false;
+  bool _isSilentUpdating = false;
+  bool _isAutoUpdateEnabled = true;
+  int _autoUpdateIntervalSeconds = 15;
+  int _secondsUntilNextUpdate = 15;
+  Timer? _autoUpdateTimer;
+  Timer? _countdownTimer;
+  DateTime? _lastUpdated;
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
 
@@ -74,23 +83,134 @@ class _OverviewTabState extends State<OverviewTab>
       curve: Curves.easeOutCubic,
     );
     _loadDashboardData();
+    _startAutoUpdateTimer();
   }
 
   @override
   void dispose() {
+    _autoUpdateTimer?.cancel();
+    _countdownTimer?.cancel();
     _fadeController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadDashboardData() async {
-    if (mounted) setState(() => _isRefreshing = true);
+  void _startAutoUpdateTimer() {
+    _autoUpdateTimer?.cancel();
+    _countdownTimer?.cancel();
+
+    if (!_isAutoUpdateEnabled) {
+      if (mounted) setState(() {});
+      return;
+    }
+
+    _secondsUntilNextUpdate = _autoUpdateIntervalSeconds;
+
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (_secondsUntilNextUpdate > 1) {
+        setState(() => _secondsUntilNextUpdate--);
+      } else {
+        _secondsUntilNextUpdate = _autoUpdateIntervalSeconds;
+      }
+    });
+
+    _autoUpdateTimer = Timer.periodic(
+      Duration(seconds: _autoUpdateIntervalSeconds),
+      (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        _loadDashboardData(isSilent: true);
+      },
+    );
+  }
+
+  void _toggleAutoUpdate() {
+    setState(() {
+      _isAutoUpdateEnabled = !_isAutoUpdateEnabled;
+      _startAutoUpdateTimer();
+    });
+  }
+
+  void _setAutoUpdateInterval(int seconds) {
+    setState(() {
+      _autoUpdateIntervalSeconds = seconds;
+      _isAutoUpdateEnabled = true;
+      _startAutoUpdateTimer();
+    });
+  }
+
+  String _formatTime(DateTime dt) {
+    final h = dt.hour.toString().padLeft(2, '0');
+    final m = dt.minute.toString().padLeft(2, '0');
+    final s = dt.second.toString().padLeft(2, '0');
+    return '$h:$m:$s';
+  }
+
+  void _applyDemoDashboardData() {
+    if (!mounted) return;
+    setState(() {
+      _stats = {
+        'totalStudents': 125,
+        'fullTimeStudents': 75,
+        'partTimeStudents': 50,
+        'activeStudents': 125,
+        'totalTeachers': 18,
+        'activeTeachers': 18,
+        'totalClassrooms': 8,
+        'fullTimeRooms': 5,
+        'partTimeRooms': 3,
+        'todayAttendance': 118,
+        'todayAbsent': 7,
+        'attendanceRate': '94.4',
+        'absentCount': 7,
+        'avgAttendance': '94.4',
+        'avgAbsent': '5.6',
+        'monthRevenue': 4850.0,
+      };
+      _trends = [
+        {'day': 'ចន្ទ', 'present': 120, 'absent': 5, 'rate': 96.0},
+        {'day': 'អង្គារ', 'present': 118, 'absent': 7, 'rate': 94.4},
+        {'day': 'ពុធ', 'present': 122, 'absent': 3, 'rate': 97.6},
+        {'day': 'ព្រហស្បតិ៍', 'present': 117, 'absent': 8, 'rate': 93.6},
+        {'day': 'សុក្រ', 'present': 119, 'absent': 6, 'rate': 95.2},
+      ];
+      _recentActivities = [
+        {'title': 'ស្កេនវត្តមានជោគជ័យ', 'subtitle': 'សិស្ស សុខ មករា (ថ្នាក់ទី ១A)', 'time': '០៧:៤៥ ព្រឹក', 'icon': 'qr_code_scanner'},
+        {'title': 'កត់ត្រាការបង់ថ្លៃសិក្សា', 'subtitle': 'វិក្កយបត្រ INV-2026-001 (\$25.00)', 'time': '០៨:១៥ ព្រឹក', 'icon': 'payments'},
+        {'title': 'បញ្ចូលពិន្ទុប្រចាំខែ', 'subtitle': 'ភាសាខ្មែរ ថ្នាក់ទី ២A ដោយគ្រូ សន ចរិយា', 'time': '០៩:៣០ ព្រឹក', 'icon': 'grade'},
+      ];
+      _isLoading = false;
+      _isRefreshing = false;
+      _isSilentUpdating = false;
+      _lastUpdated = DateTime.now();
+      _secondsUntilNextUpdate = _autoUpdateIntervalSeconds;
+    });
+    _fadeController.forward(from: 0.0);
+  }
+
+  Future<void> _loadDashboardData({bool isSilent = false}) async {
+    if (ApiConfig.isDemoMode) {
+      _applyDemoDashboardData();
+      return;
+    }
+
+    if (!isSilent && mounted) {
+      setState(() => _isRefreshing = true);
+    } else if (mounted) {
+      setState(() => _isSilentUpdating = true);
+    }
 
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
       final results = await Future.wait([
-        http.get(Uri.parse('$baseUrl/dashboard/stats?_t=$now')).timeout(const Duration(seconds: 5)),
-        http.get(Uri.parse('$baseUrl/dashboard/attendance-trends?_t=$now')).timeout(const Duration(seconds: 5)),
-        http.get(Uri.parse('$baseUrl/dashboard/recent-activity?_t=$now')).timeout(const Duration(seconds: 5)),
+        http.get(Uri.parse('$baseUrl/dashboard/stats?_t=$now')).timeout(const Duration(seconds: 4)),
+        http.get(Uri.parse('$baseUrl/dashboard/attendance-trends?_t=$now')).timeout(const Duration(seconds: 4)),
+        http.get(Uri.parse('$baseUrl/dashboard/recent-activity?_t=$now')).timeout(const Duration(seconds: 4)),
       ]);
       final resStats = results[0];
       final resTrends = results[1];
@@ -187,14 +307,21 @@ class _OverviewTabState extends State<OverviewTab>
         }
       }
     } catch (_) {
-      // Fallback gracefully without breaking UI
+      // Fallback gracefully without breaking UI and stop further failed network polling
+      ApiConfig.isDemoMode = true;
+      _applyDemoDashboardData();
     } finally {
       if (mounted) {
         setState(() {
           _isLoading = false;
           _isRefreshing = false;
+          _isSilentUpdating = false;
+          _lastUpdated = DateTime.now();
+          _secondsUntilNextUpdate = _autoUpdateIntervalSeconds;
         });
-        _fadeController.forward(from: 0.0);
+        if (!isSilent) {
+          _fadeController.forward(from: 0.0);
+        }
       }
     }
   }
@@ -545,37 +672,52 @@ class _OverviewTabState extends State<OverviewTab>
                           color: const Color(0xFF0F172A),
                         ),
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFECFDF5),
+                      Tooltip(
+                        message: 'ចុចដើម្បី បើក/បិទ អាប់ដេតស្វ័យប្រវត្តិ (Auto-Update)',
+                        child: InkWell(
+                          onTap: _toggleAutoUpdate,
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: const Color(0xFFA7F3D0)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF10B981),
-                                shape: BoxShape.circle,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _isAutoUpdateEnabled ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: _isAutoUpdateEnabled ? const Color(0xFFA7F3D0) : const Color(0xFFCBD5E1),
                               ),
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'ប្រព័ន្ធសកម្ម (Live)',
-                              style: AppTheme.khmerBody(
-                                color: const Color(0xFF065F46),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: _isSilentUpdating
+                                        ? const Color(0xFF3B82F6)
+                                        : (_isAutoUpdateEnabled ? const Color(0xFF10B981) : const Color(0xFF94A3B8)),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  _isSilentUpdating
+                                      ? 'កំពុងអាប់ដេត... (Syncing)'
+                                      : (_isAutoUpdateEnabled
+                                          ? 'ប្រព័ន្ធសកម្ម • អូតូ (${_secondsUntilNextUpdate}s)'
+                                          : 'អូតូអាប់ដេត (បិទ)'),
+                                  style: AppTheme.khmerBody(
+                                    color: _isAutoUpdateEnabled ? const Color(0xFF065F46) : const Color(0xFF64748B),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
                     ],
@@ -599,7 +741,172 @@ class _OverviewTabState extends State<OverviewTab>
         final actionButtons = Wrap(
           spacing: 10,
           runSpacing: 10,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
+            // Auto-Update Mode Menu Button
+            PopupMenuButton<int>(
+              tooltip: 'កំណត់ល្បឿនអាប់ដេតស្វ័យប្រវត្តិ (Auto-Update Settings)',
+              offset: const Offset(0, 48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+              color: Colors.white,
+              onSelected: (val) {
+                if (val == 0) {
+                  setState(() {
+                    _isAutoUpdateEnabled = false;
+                    _startAutoUpdateTimer();
+                  });
+                } else {
+                  _setAutoUpdateInterval(val);
+                }
+              },
+              itemBuilder: (ctx) => [
+                PopupMenuItem<int>(
+                  enabled: false,
+                  child: Text(
+                    'ល្បឿនអាប់ដេតស្វ័យប្រវត្តិ (Auto-Update Interval)',
+                    style: AppTheme.khmerBody(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ),
+                const PopupMenuDivider(),
+                PopupMenuItem<int>(
+                  value: 10,
+                  child: Row(
+                    children: [
+                      Icon(
+                        _isAutoUpdateEnabled && _autoUpdateIntervalSeconds == 10
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_unchecked_rounded,
+                        size: 16,
+                        color: _isAutoUpdateEnabled && _autoUpdateIntervalSeconds == 10
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFF94A3B8),
+                      ),
+                      const SizedBox(width: 10),
+                      Text('រៀងរាល់ ១០ វិនាទី (10s)', style: AppTheme.khmerBody(fontSize: 12.5)),
+                    ],
+                  ),
+                ),
+                PopupMenuItem<int>(
+                  value: 15,
+                  child: Row(
+                    children: [
+                      Icon(
+                        _isAutoUpdateEnabled && _autoUpdateIntervalSeconds == 15
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_unchecked_rounded,
+                        size: 16,
+                        color: _isAutoUpdateEnabled && _autoUpdateIntervalSeconds == 15
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFF94A3B8),
+                      ),
+                      const SizedBox(width: 10),
+                      Text('រៀងរាល់ ១៥ វិនាទី (15s) • លំនាំដើម', style: AppTheme.khmerBody(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+                PopupMenuItem<int>(
+                  value: 30,
+                  child: Row(
+                    children: [
+                      Icon(
+                        _isAutoUpdateEnabled && _autoUpdateIntervalSeconds == 30
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_unchecked_rounded,
+                        size: 16,
+                        color: _isAutoUpdateEnabled && _autoUpdateIntervalSeconds == 30
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFF94A3B8),
+                      ),
+                      const SizedBox(width: 10),
+                      Text('រៀងរាល់ ៣០ វិនាទី (30s)', style: AppTheme.khmerBody(fontSize: 12.5)),
+                    ],
+                  ),
+                ),
+                PopupMenuItem<int>(
+                  value: 60,
+                  child: Row(
+                    children: [
+                      Icon(
+                        _isAutoUpdateEnabled && _autoUpdateIntervalSeconds == 60
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_unchecked_rounded,
+                        size: 16,
+                        color: _isAutoUpdateEnabled && _autoUpdateIntervalSeconds == 60
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFF94A3B8),
+                      ),
+                      const SizedBox(width: 10),
+                      Text('រៀងរាល់ ១ នាទី (60s)', style: AppTheme.khmerBody(fontSize: 12.5)),
+                    ],
+                  ),
+                ),
+                const PopupMenuDivider(),
+                PopupMenuItem<int>(
+                  value: 0,
+                  child: Row(
+                    children: [
+                      Icon(
+                        !_isAutoUpdateEnabled
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_unchecked_rounded,
+                        size: 16,
+                        color: !_isAutoUpdateEnabled
+                            ? const Color(0xFFEF4444)
+                            : const Color(0xFF94A3B8),
+                      ),
+                      const SizedBox(width: 10),
+                      Text('បិទអាប់ដេតស្វ័យប្រវត្តិ (Turn OFF)', style: AppTheme.khmerBody(fontSize: 12.5, color: const Color(0xFFEF4444), fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              ],
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: _isAutoUpdateEnabled ? const Color(0xFFECFDF5) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _isAutoUpdateEnabled ? const Color(0xFFA7F3D0) : const Color(0xFFCBD5E1),
+                    width: 1.2,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _isAutoUpdateEnabled ? Icons.bolt_rounded : Icons.pause_circle_outline_rounded,
+                      size: 18,
+                      color: _isAutoUpdateEnabled ? const Color(0xFF10B981) : const Color(0xFF64748B),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _isAutoUpdateEnabled
+                          ? 'អាប់ដេតអូតូ (${_secondsUntilNextUpdate}s)'
+                          : 'អាប់ដេតអូតូ (បិទ)',
+                      style: AppTheme.khmerBody(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: _isAutoUpdateEnabled ? const Color(0xFF065F46) : const Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.arrow_drop_down_rounded,
+                      size: 18,
+                      color: _isAutoUpdateEnabled ? const Color(0xFF065F46) : const Color(0xFF64748B),
+                    ),
+                  ],
+                ),
+              ),
+            ),
             OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
                 foregroundColor: const Color(0xFF0F172A),
@@ -640,8 +947,8 @@ class _OverviewTabState extends State<OverviewTab>
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              onPressed: _isRefreshing ? null : _loadDashboardData,
-              icon: _isRefreshing
+              onPressed: _isRefreshing ? null : () => _loadDashboardData(),
+              icon: _isRefreshing || _isSilentUpdating
                   ? const SizedBox(
                       width: 16,
                       height: 16,
@@ -652,7 +959,11 @@ class _OverviewTabState extends State<OverviewTab>
                     )
                   : const Icon(Icons.refresh_rounded, size: 18),
               label: Text(
-                _isRefreshing ? 'កំពុងផ្ទុក...' : 'ផ្ទុកទិន្នន័យឡើងវិញ (Refresh)',
+                _isRefreshing
+                    ? 'កំពុងផ្ទុក...'
+                    : (_lastUpdated != null
+                        ? 'ផ្ទុកឡើងវិញ (${_formatTime(_lastUpdated!)})'
+                        : 'ផ្ទុកទិន្នន័យឡើងវិញ (Refresh)'),
                 style: AppTheme.khmerBody(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,

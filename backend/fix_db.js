@@ -87,6 +87,13 @@ async function fixDatabase() {
     await pool.query("ALTER TABLE schedules MODIFY classroom_id INT NULL").catch(() => { });
     await pool.query("ALTER TABLE schedules MODIFY teacher_id INT NULL").catch(() => { });
 
+    // 7. Fix 'Data truncated for column status' across all tables
+    await pool.query("ALTER TABLE teachers MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'Active'").catch(() => { });
+    await pool.query("ALTER TABLE students MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'Active'").catch(() => { });
+    await pool.query("ALTER TABLE attendance MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'Present'").catch(() => { });
+    await pool.query("ALTER TABLE student_payments MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'Paid'").catch(() => { });
+    await pool.query("ALTER TABLE users MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'Active'").catch(() => { });
+
     console.log('Database repair completed successfully!');
     await pool.end();
 }
