@@ -78,9 +78,6 @@ class ApiService {
   static Map<String, String> get _headers => {
     'Content-Type': 'application/json; charset=utf-8',
     'Accept': 'application/json',
-    'Cache-Control': 'no-cache, no-store, must-revalidate',
-    'Pragma': 'no-cache',
-    'Expires': '0',
   };
 
   static dynamic _safeJsonDecode(http.Response res) {
@@ -135,7 +132,7 @@ class ApiService {
           final sep = endpoint.contains('?') ? '&' : '?';
           final uri = Uri.parse('$baseUrl$endpoint${sep}_t=${DateTime.now().millisecondsSinceEpoch}');
           res = await http
-              .get(uri, headers: headers)
+              .get(uri, headers: const {'Accept': 'application/json'})
               .timeout(const Duration(seconds: 30));
         }
 

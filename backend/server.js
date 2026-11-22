@@ -34,26 +34,31 @@ function getCambodiaDateStr() {
 }
 
 const app = express();
+
+// 🌐 Absolute First Middleware: Manual CORS & OPTIONS Preflight
+app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma');
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+    next();
+});
+
 app.use(compression());
 
 // 🌐 Full CORS Support for Browser, Mobile & Tunnel access
 app.use(cors({
     origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'Access-Control-Request-Private-Network']
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'Cache-Control', 'Pragma', 'Access-Control-Request-Private-Network']
 }));
 app.options('*', cors());
 
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Access-Control-Request-Private-Network');
-    res.header('Access-Control-Allow-Private-Network', 'true');
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(200);
-    }
-    next();
-});
+// Health & Ping Endpoints
+app.get('/', (req, res) => res.json({ status: 'OK', message: 'BLS Server is Live' }));
+app.get('/api/ping', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 
 // ==========================================
 // 🛡️ SECURITY: IP WHITELIST & ACCESS CONTROL
@@ -265,7 +270,7 @@ const dbConfig = {
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'bls_school_db',
-    ssl: process.env.DB_HOST ? { minVersion: 'TLSv1.2', rejectUnauthorized: true } : undefined,
+    ssl: process.env.DB_HOST ? { minVersion: 'TLSv1.2', rejectUnauthorized: false } : undefined,
     waitForConnections: true,
     connectionLimit: 25,
     maxIdle: 10,
