@@ -1497,28 +1497,44 @@ app.get(['/api/students', '/students'], async (req, res) => {
 app.post('/api/students', async (req, res) => {
     const { student_code, name_kh, name_en, gender, dob, pob, parent_name, parent_phone, study_type, shift, part_time_course, classroom_id, photo_url } = req.body;
     try {
+        const safeNameKh = (name_kh || '').trim();
+        if (!safeNameKh) {
+            return res.status(400).json({ success: false, error: 'ឈ្មោះសិស្សជាភាសាខ្មែរត្រូវតែបំពេញ' });
+        }
         const sCode = (student_code || '').trim() || `BLS-${Math.floor(1000 + Math.random() * 9000)}`;
+        const safePhoto = (typeof photo_url === 'string' && photo_url.trim().length > 0) ? photo_url.trim() : null;
         await pool.query(
             `INSERT INTO students (student_code, name_kh, name_en, gender, dob, pob, parent_name, parent_phone, study_type, shift, part_time_course, classroom_id, photo_url, status)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
-            [sCode, name_kh.trim(), (name_en || '').trim(), gender || 'Female', fmtDate(dob), (pob || '').trim(), (parent_name || '').trim(), (parent_phone || '').trim(), study_type || 'Full-Time', shift || 'Morning', study_type === 'Part-Time' ? part_time_course : 'None', classroom_id || null, photo_url || null]
+            [sCode, safeNameKh, (name_en || '').trim(), gender || 'Female', fmtDate(dob), (pob || '').trim(), (parent_name || '').trim(), (parent_phone || '').trim(), study_type || 'Full-Time', shift || 'Morning', study_type === 'Part-Time' ? part_time_course : 'None', classroom_id || null, safePhoto]
         );
         invalidateMemberCache();
         return res.json({ success: true, message: 'បានចុះឈ្មោះសិស្សជោគជ័យ!' });
-    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+    } catch (e) {
+        console.error('[Error] POST /api/students:', e);
+        return res.status(500).json({ success: false, error: e.message });
+    }
 });
 
 app.put('/api/students/:id', async (req, res) => {
     const { id } = req.params;
     const { name_kh, name_en, gender, dob, pob, parent_name, parent_phone, study_type, shift, part_time_course, classroom_id, photo_url } = req.body;
     try {
+        const safeNameKh = (name_kh || '').trim();
+        if (!safeNameKh) {
+            return res.status(400).json({ success: false, error: 'ឈ្មោះសិស្សជាភាសាខ្មែរត្រូវតែបំពេញ' });
+        }
+        const safePhoto = (typeof photo_url === 'string' && photo_url.trim().length > 0) ? photo_url.trim() : null;
         await pool.query(
             `UPDATE students SET name_kh = ?, name_en = ?, gender = ?, dob = ?, pob = ?, parent_name = ?, parent_phone = ?, study_type = ?, shift = ?, part_time_course = ?, classroom_id = ?, photo_url = ? WHERE id = ?`,
-            [name_kh.trim(), (name_en || '').trim(), gender || 'Female', fmtDate(dob), (pob || '').trim(), (parent_name || '').trim(), (parent_phone || '').trim(), study_type || 'Full-Time', shift || 'Morning', study_type === 'Part-Time' ? part_time_course : 'None', classroom_id || null, photo_url || null, id]
+            [safeNameKh, (name_en || '').trim(), gender || 'Female', fmtDate(dob), (pob || '').trim(), (parent_name || '').trim(), (parent_phone || '').trim(), study_type || 'Full-Time', shift || 'Morning', study_type === 'Part-Time' ? part_time_course : 'None', classroom_id || null, safePhoto, id]
         );
         invalidateMemberCache();
         return res.json({ success: true, message: 'បានកែប្រែទិន្នន័យសិស្សជោគជ័យ!' });
-    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+    } catch (e) {
+        console.error('[Error] PUT /api/students/:id:', e);
+        return res.status(500).json({ success: false, error: e.message });
+    }
 });
 
 app.delete('/api/students/:id', async (req, res) => {
