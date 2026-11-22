@@ -1,18 +1,25 @@
-# Node.js
+# Dependencies & Build
 node_modules/
 backend/node_modules/
+build/
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Environment & Secrets
 .env
 .env.*
 backend/.env
 
-# Flutter/Dart
-.dart_tool/
-.packages
-build/
-.flutter-plugins
-.flutter-plugins-dependencies
-*.log
+# Firebase
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
 
-# Large binaries & installers
+# IDE & OS files
+.DS_Store
+Thumbs.db
+*.log
 *.msi
 *.exe
