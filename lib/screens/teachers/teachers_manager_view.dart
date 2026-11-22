@@ -35,9 +35,11 @@ class _TeachersManagerViewState extends State<TeachersManagerView> {
     setState(() => _isLoading = true);
 
     try {
-      final res = await http
-          .get(Uri.parse('$baseUrl/teachers'))
-          .timeout(const Duration(seconds: 8));
+      final uri = Uri.parse('$baseUrl/teachers?_t=${DateTime.now().millisecondsSinceEpoch}');
+      final res = await http.get(uri, headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      }).timeout(const Duration(seconds: 30));
       if (res.statusCode == 200) {
         final d = jsonDecode(utf8.decode(res.bodyBytes));
         if (mounted) {

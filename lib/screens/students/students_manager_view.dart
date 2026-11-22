@@ -31,7 +31,11 @@ class _StudentsManagerViewState extends State<StudentsManagerView> {
   Future<void> _fetchStudents() async {
     setState(() => _isLoading = true);
     try {
-      final res = await http.get(Uri.parse('$baseUrl/students')).timeout(const Duration(seconds: 6));
+      final uri = Uri.parse('$baseUrl/students?_t=${DateTime.now().millisecondsSinceEpoch}');
+      final res = await http.get(uri, headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      }).timeout(const Duration(seconds: 30));
       if (res.statusCode == 200) {
         final d = jsonDecode(utf8.decode(res.bodyBytes));
         setState(() => _students = d['data'] ?? []);

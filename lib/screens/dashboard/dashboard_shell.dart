@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import 'package:school_management_app/config/api_config.dart';
 import 'package:school_management_app/providers/auth_provider.dart';
 import 'package:school_management_app/utils/app_theme.dart';
 import 'package:school_management_app/utils/app_logo.dart';
@@ -68,12 +71,14 @@ class _DashboardShellState extends State<DashboardShell> {
   bool _sidebarCollapsed = false;
   String _sidebarFilter = '';
   final TextEditingController _sidebarSearchCtrl = TextEditingController();
+  Timer? _keepAliveTimer;
 
   late final List<_BLSModuleDef> _allModules;
 
   @override
   void initState() {
     super.initState();
+    _startKeepAliveTimer();
     _allModules = [
       // ─── Category 1: ទូទៅ & វត្តមាន (Overview & Attendance) ───
       _BLSModuleDef(
@@ -227,8 +232,19 @@ class _DashboardShellState extends State<DashboardShell> {
     ];
   }
 
+  void _startKeepAliveTimer() {
+    _keepAliveTimer?.cancel();
+    _keepAliveTimer = Timer.periodic(const Duration(minutes: 10), (_) async {
+      try {
+        final uri = Uri.parse('${ApiConfig.baseUrl}/health?_t=${DateTime.now().millisecondsSinceEpoch}');
+        await http.get(uri).timeout(const Duration(seconds: 15));
+      } catch (_) {}
+    });
+  }
+
   @override
   void dispose() {
+    _keepAliveTimer?.cancel();
     _sidebarSearchCtrl.dispose();
     super.dispose();
   }

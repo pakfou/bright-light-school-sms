@@ -515,6 +515,14 @@ app.get(['/api', '/api/'], async (req, res) => {
 });
 
 const fmtDate = (d) => d ? d.toString().split('T')[0].substring(0, 10) : null;
+const safeVal = (val, defaultVal = null) => {
+    if (val === undefined || val === 'undefined' || val === null || val === 'null') return defaultVal;
+    if (typeof val === 'string') {
+        const trimmed = val.trim();
+        return trimmed.length === 0 ? defaultVal : trimmed;
+    }
+    return val;
+};
 
 // Auto-create critical tables and indexes for instant performance & stability
 async function ensureTables() {
@@ -1437,17 +1445,45 @@ app.post('/api/teachers', async (req, res) => {
 });
 
 app.put('/api/teachers/:id', async (req, res) => {
-    const { id } = req.params;
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ success: false, error: 'Teacher ID មិនត្រឹមត្រូវ!' });
     const { name_kh, name_en, gender, dob, phone, email, role_title, specialized_subject, base_salary, status, hire_date, photo_url } = req.body;
     try {
-        const safeNameKh = (name_kh || '').trim();
+        const safeNameKh = safeVal(name_kh);
         if (!safeNameKh) {
             return res.status(400).json({ success: false, error: 'ឈ្មោះគ្រូជាភាសាខ្មែរត្រូវតែបំពេញ' });
         }
-        const safePhoto = (typeof photo_url === 'string' && photo_url.trim().length > 0) ? photo_url.trim() : null;
+        const safePhoto = safeVal(photo_url);
         await pool.query(
-            `UPDATE teachers SET name_kh = ?, name_en = ?, gender = ?, dob = ?, phone = ?, email = ?, role_title = ?, specialized_subject = ?, base_salary = ?, status = COALESCE(?, status), hire_date = ?, photo_url = ? WHERE id = ?`,
-            [safeNameKh, (name_en || '').trim(), gender || 'Male', fmtDate(dob), (phone || '').trim(), (email || '').trim(), role_title || 'គ្រូបង្រៀន', (specialized_subject || '').trim(), parseFloat(base_salary) || 0, status || 'Active', fmtDate(hire_date), safePhoto, id]
+            `UPDATE teachers SET 
+                name_kh = ?, 
+                name_en = ?, 
+                gender = ?, 
+                dob = ?, 
+                phone = ?, 
+                email = ?, 
+                role_title = ?, 
+                specialized_subject = ?, 
+                base_salary = ?, 
+                status = COALESCE(?, status), 
+                hire_date = ?, 
+                photo_url = ? 
+             WHERE id = ?`,
+            [
+                safeNameKh,
+                safeVal(name_en),
+                safeVal(gender, 'Male'),
+                fmtDate(dob),
+                safeVal(phone),
+                safeVal(email),
+                safeVal(role_title, 'គ្រូបង្រៀន'),
+                safeVal(specialized_subject),
+                parseFloat(base_salary) || 0,
+                safeVal(status, 'Active'),
+                fmtDate(hire_date),
+                safePhoto,
+                id
+            ]
         );
         invalidateMemberCache();
         return res.json({ success: true, message: 'បានកែប្រែទិន្នន័យគ្រូជោគជ័យ!' });
@@ -1517,17 +1553,45 @@ app.post('/api/students', async (req, res) => {
 });
 
 app.put('/api/students/:id', async (req, res) => {
-    const { id } = req.params;
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ success: false, error: 'Student ID មិនត្រឹមត្រូវ!' });
     const { name_kh, name_en, gender, dob, pob, parent_name, parent_phone, study_type, shift, part_time_course, classroom_id, photo_url } = req.body;
     try {
-        const safeNameKh = (name_kh || '').trim();
+        const safeNameKh = safeVal(name_kh);
         if (!safeNameKh) {
             return res.status(400).json({ success: false, error: 'ឈ្មោះសិស្សជាភាសាខ្មែរត្រូវតែបំពេញ' });
         }
-        const safePhoto = (typeof photo_url === 'string' && photo_url.trim().length > 0) ? photo_url.trim() : null;
+        const safePhoto = safeVal(photo_url);
         await pool.query(
-            `UPDATE students SET name_kh = ?, name_en = ?, gender = ?, dob = ?, pob = ?, parent_name = ?, parent_phone = ?, study_type = ?, shift = ?, part_time_course = ?, classroom_id = ?, photo_url = ? WHERE id = ?`,
-            [safeNameKh, (name_en || '').trim(), gender || 'Female', fmtDate(dob), (pob || '').trim(), (parent_name || '').trim(), (parent_phone || '').trim(), study_type || 'Full-Time', shift || 'Morning', study_type === 'Part-Time' ? part_time_course : 'None', classroom_id || null, safePhoto, id]
+            `UPDATE students SET 
+                name_kh = ?, 
+                name_en = ?, 
+                gender = ?, 
+                dob = ?, 
+                pob = ?, 
+                parent_name = ?, 
+                parent_phone = ?, 
+                study_type = ?, 
+                shift = ?, 
+                part_time_course = ?, 
+                classroom_id = ?, 
+                photo_url = ? 
+             WHERE id = ?`,
+            [
+                safeNameKh,
+                safeVal(name_en),
+                safeVal(gender, 'Female'),
+                fmtDate(dob),
+                safeVal(pob),
+                safeVal(parent_name),
+                safeVal(parent_phone),
+                safeVal(study_type, 'Full-Time'),
+                safeVal(shift, 'Morning'),
+                study_type === 'Part-Time' ? safeVal(part_time_course, 'None') : 'None',
+                (classroom_id && parseInt(classroom_id, 10) > 0) ? parseInt(classroom_id, 10) : null,
+                safePhoto,
+                id
+            ]
         );
         invalidateMemberCache();
         return res.json({ success: true, message: 'បានកែប្រែទិន្នន័យសិស្សជោគជ័យ!' });
@@ -1694,14 +1758,36 @@ app.post(['/api/classrooms', '/classrooms'], async (req, res) => {
 });
 
 app.put(['/api/classrooms/:id', '/classrooms/:id'], async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ success: false, error: 'Classroom ID មិនត្រឹមត្រូវ!' });
     const { class_name, grade_level_id, shift, room_number, capacity, teacher_name, academic_year } = req.body;
     try {
         await pool.query(
-            'UPDATE classrooms SET class_name = ?, grade_level_id = ?, shift = ?, room_number = ?, capacity = ?, teacher_name = ?, academic_year = ? WHERE id = ?',
-            [class_name, grade_level_id || null, shift || 'Morning', room_number || 'Room-01', capacity || 30, teacher_name || '', academic_year || '2025-2026', req.params.id]
+            `UPDATE classrooms SET 
+                class_name = ?, 
+                grade_level_id = ?, 
+                shift = ?, 
+                room_number = ?, 
+                capacity = ?, 
+                teacher_name = ?, 
+                academic_year = ? 
+             WHERE id = ?`,
+            [
+                safeVal(class_name, 'ថ្នាក់រៀន'),
+                (grade_level_id && parseInt(grade_level_id, 10) > 0) ? parseInt(grade_level_id, 10) : null,
+                safeVal(shift, 'Morning'),
+                safeVal(room_number, 'Room-01'),
+                parseInt(capacity, 10) || 30,
+                safeVal(teacher_name, ''),
+                safeVal(academic_year, '2025-2026'),
+                id
+            ]
         );
         return res.json({ success: true, message: 'បានកែប្រែបន្ទប់រៀនជោគជ័យ!' });
-    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+    } catch (e) {
+        console.error('[Error] PUT /api/classrooms/:id:', e);
+        return res.status(500).json({ success: false, error: e.message });
+    }
 });
 
 app.delete(['/api/classrooms/:id', '/classrooms/:id'], async (req, res) => {
@@ -1808,16 +1894,37 @@ app.post('/api/schedules', async (req, res) => {
 });
 
 app.put('/api/schedules/:id', async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ success: false, error: 'Schedule ID មិនត្រឹមត្រូវ!' });
     const { classroom_id, teacher_id, subject_name, day_of_week, start_time, end_time, shift } = req.body;
     try {
         await ensureTables();
         await pool.query(
-            `UPDATE schedules SET classroom_id = ?, teacher_id = ?, subject_name = ?, subject = ?, day_of_week = ?, start_time = ?, end_time = ?, shift = ? WHERE id = ?`,
-            [classroom_id || null, teacher_id || null, subject_name || 'ចំណេះដឹងទូទៅ', subject_name || 'ចំណេះដឹងទូទៅ', day_of_week || 'Mon', start_time || '07:30', end_time || '09:00', shift || 'Morning', req.params.id]
+            `UPDATE schedules SET 
+                classroom_id = ?, 
+                teacher_id = ?, 
+                subject_name = ?, 
+                subject = ?, 
+                day_of_week = ?, 
+                start_time = ?, 
+                end_time = ?, 
+                shift = ? 
+             WHERE id = ?`,
+            [
+                (classroom_id && parseInt(classroom_id, 10) > 0) ? parseInt(classroom_id, 10) : null,
+                (teacher_id && parseInt(teacher_id, 10) > 0) ? parseInt(teacher_id, 10) : null,
+                safeVal(subject_name, 'ចំណេះដឹងទូទៅ'),
+                safeVal(subject_name, 'ចំណេះដឹងទូទៅ'),
+                safeVal(day_of_week, 'Mon'),
+                safeVal(start_time, '07:30'),
+                safeVal(end_time, '09:00'),
+                safeVal(shift, 'Morning'),
+                id
+            ]
         );
         return res.json({ success: true, message: 'បានកែប្រែកាលវិភាគជោគជ័យ!' });
     } catch (e) {
-        console.error('Schedule update error:', e.message);
+        console.error('[Error] PUT /api/schedules/:id:', e);
         return res.status(500).json({ success: false, error: e.message });
     }
 });
@@ -3931,6 +4038,19 @@ app.use((req, res, next) => {
         }
     }
     next();
+});
+
+// 🛡️ Global Error Handler Middleware (Prevents server crashes and returns clean JSON error)
+app.use((err, req, res, next) => {
+    console.error('[Global Error Handler]:', err.stack || err);
+    if (res.headersSent) {
+        return next(err);
+    }
+    res.status(err.status || 500).json({
+        success: false,
+        error: err.message || 'Internal Server Error',
+        timestamp: new Date().toISOString()
+    });
 });
 
 const PORT = process.env.PORT || 5000;

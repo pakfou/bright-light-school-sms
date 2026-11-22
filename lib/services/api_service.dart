@@ -76,28 +76,12 @@ class ApiService {
   };
 
   static Map<String, String> get _headers => {
-    'Content-Type': 'application/json',
+    'Content-Type': 'application/json; charset=utf-8',
+    'Accept': 'application/json',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
   };
-
-  static Future<String?> uploadPhoto(Uint8List bytes, String filename) async {
-    try {
-      var request = http.MultipartRequest('POST', Uri.parse('$baseUrl/upload'));
-      request.files.add(
-        http.MultipartFile.fromBytes('photo', bytes, filename: filename),
-      );
-      var streamedResponse = await request.send();
-      var response = await http.Response.fromStream(streamedResponse);
-      if (response.statusCode == 200) {
-        var data = jsonDecode(
-          utf8.decode(response.bodyBytes, allowMalformed: true),
-        );
-        if (data['success'] == true) return data['photoUrl'];
-      }
-    } catch (e) {
-      debugPrint('Upload error: $e');
-    }
-    return null;
-  }
 
   static dynamic _safeJsonDecode(http.Response res) {
     final text = utf8.decode(res.bodyBytes, allowMalformed: true).trim();
@@ -117,51 +101,85 @@ class ApiService {
     return jsonDecode(text);
   }
 
-  // Generic helpers for legacy providers
-  static Future<Map<String, dynamic>> get(String endpoint) async {
-    if (ApiConfig.isDemoMode) {
+  /// Centralized HTTP Request handler with Automatic Retry (2 attempts) & Cache-Busting
+  static Future<Map<String, dynamic>> _requestWithRetry(
+    String method,
+    String endpoint, {
+    Map<String, dynamic>? body,
+    int maxRetries = 2,
+  }) async {
+    int attempts = 0;
+    while (attempts <= maxRetries) {
+      attempts++;
+      try {
+        final headers = _headers;
+        http.Response res;
+
+        if (method == 'POST') {
+          final uri = Uri.parse('$baseUrl$endpoint');
+          res = await http
+              .post(uri, headers: headers, body: body != null ? jsonEncode(body) : null)
+              .timeout(const Duration(seconds: 30));
+        } else if (method == 'PUT') {
+          final uri = Uri.parse('$baseUrl$endpoint');
+          res = await http
+              .put(uri, headers: headers, body: body != null ? jsonEncode(body) : null)
+              .timeout(const Duration(seconds: 30));
+        } else if (method == 'DELETE') {
+          final uri = Uri.parse('$baseUrl$endpoint');
+          res = await http
+              .delete(uri, headers: headers)
+              .timeout(const Duration(seconds: 30));
+        } else {
+          // Automatic cache-busting timestamp for GET
+          final sep = endpoint.contains('?') ? '&' : '?';
+          final uri = Uri.parse('$baseUrl$endpoint${sep}_t=${DateTime.now().millisecondsSinceEpoch}');
+          res = await http
+              .get(uri, headers: headers)
+              .timeout(const Duration(seconds: 30));
+        }
+
+        final data = _safeJsonDecode(res);
+        if (data is Map<String, dynamic>) {
+          ApiConfig.isDemoMode = false;
+          return data;
+        }
+        return {'success': false, 'error': 'Invalid response format'};
+      } catch (e) {
+        if (attempts > maxRetries) {
+          debugPrint('$method $endpoint failed after $attempts attempts: $e');
+          break;
+        }
+        await Future.delayed(const Duration(milliseconds: 1000));
+      }
+    }
+
+    // Fallback for GET in demo or offline mode
+    if (method == 'GET') {
       if (endpoint.contains('/dashboard/stats')) return demoStats;
       if (endpoint.contains('/dashboard/attendance-trends')) return demoTrends;
       if (endpoint.contains('/dashboard/recent-activity') || endpoint.contains('/attendance/recent')) return demoRecentActivity;
       if (endpoint.contains('/classrooms')) return {'success': true, 'data': demoClassrooms.map((c) => c.toJson()).toList()};
       if (endpoint.contains('/students')) return {'success': true, 'data': demoStudents.map((s) => s.toJson()).toList()};
       if (endpoint.contains('/teachers')) return {'success': true, 'data': demoTeachers.map((t) => t.toJson()).toList()};
-      return {'success': true, 'data': []};
     }
-    try {
-      final res = await http.get(Uri.parse('$baseUrl$endpoint')).timeout(const Duration(seconds: 4));
-      final data = _safeJsonDecode(res);
-      if (data is Map<String, dynamic>) return data;
-      return {'success': false, 'error': 'Invalid response format'};
-    } catch (e) {
-      debugPrint('GET $endpoint failed: $e. Using fallback.');
-      ApiConfig.isDemoMode = true;
-      if (endpoint.contains('/dashboard/stats')) return demoStats;
-      if (endpoint.contains('/dashboard/attendance-trends')) return demoTrends;
-      if (endpoint.contains('/dashboard/recent-activity') || endpoint.contains('/attendance/recent')) return demoRecentActivity;
-      if (endpoint.contains('/classrooms')) return {'success': true, 'data': demoClassrooms.map((c) => c.toJson()).toList()};
-      if (endpoint.contains('/students')) return {'success': true, 'data': demoStudents.map((s) => s.toJson()).toList()};
-      if (endpoint.contains('/teachers')) return {'success': true, 'data': demoTeachers.map((t) => t.toJson()).toList()};
-      return {'success': false, 'error': e.toString()};
-    }
+    return {'success': false, 'error': 'មិនអាចភ្ជាប់ទៅកាន់ Server បានទេ'};
   }
 
-  static Future<Map<String, dynamic>> post(
-    String endpoint,
-    Map<String, dynamic> body,
-  ) async {
-    try {
-      final res = await http.post(
-        Uri.parse('$baseUrl$endpoint'),
-        headers: _headers,
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 4));
-      final data = _safeJsonDecode(res);
-      if (data is Map<String, dynamic>) return data;
-      return {'success': false, 'error': 'Invalid response format'};
-    } catch (e) {
-      return {'success': false, 'error': e.toString()};
-    }
+  static Future<Map<String, dynamic>> get(String endpoint) async {
+    return _requestWithRetry('GET', endpoint);
+  }
+
+  static Future<Map<String, dynamic>> post(String endpoint, Map<String, dynamic> body) async {
+    return _requestWithRetry('POST', endpoint, body: body);
+  }
+
+  static Future<Map<String, dynamic>> put(String endpoint, Map<String, dynamic> body) async {
+    return _requestWithRetry('PUT', endpoint, body: body);
+  }
+
+  static Future<Map<String, dynamic>> delete(String endpoint) async {
+    return _requestWithRetry('DELETE', endpoint);
   }
 
   // Dashboard
