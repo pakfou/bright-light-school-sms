@@ -142326,16 +142326,16 @@ A.aR_(a,"load",new A.b5d(this.a,a),!1,t.rE.c)},
 $S:829}
 A.b5d.prototype={
 $1(a){var s,r,q,p,o=this.b,n=o.width
-if(n==null)n=350
-s=n>0?n:350
+if(n==null)n=320
+s=n>0?n:320
 r=o.height
-if(r==null)r=350
-q=B.n.aD(r*(350/s))
+if(r==null)r=320
+q=B.n.aD(r*(320/s))
 p=document.createElement("canvas")
-p.width=350
+p.width=320
 p.height=q
-p.getContext("2d").drawImage(o,0,0,350,q)
-o=p.toDataURL("image/jpeg",0.75)
+p.getContext("2d").drawImage(o,0,0,320,q)
+o=p.toDataURL("image/jpeg",0.7)
 o.toString
 s=this.a
 if(s.c!=null)s.E(new A.b5c(s,o))},
