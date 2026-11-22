@@ -42,6 +42,7 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'Access-Control-Request-Private-Network']
 }));
+app.options('*', cors());
 
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
@@ -1416,28 +1417,44 @@ app.get('/api/teachers', async (req, res) => {
 app.post('/api/teachers', async (req, res) => {
     const { teacher_code, name_kh, name_en, gender, dob, phone, email, role_title, specialized_subject, base_salary, status, hire_date, photo_url } = req.body;
     try {
+        const safeNameKh = (name_kh || '').trim();
+        if (!safeNameKh) {
+            return res.status(400).json({ success: false, error: 'ឈ្មោះគ្រូជាភាសាខ្មែរត្រូវតែបំពេញ' });
+        }
+        const safePhoto = (typeof photo_url === 'string' && photo_url.trim().length > 0) ? photo_url.trim() : null;
         const tCode = (teacher_code || '').trim() || `TCH-${Math.floor(1000 + Math.random() * 9000)}`;
         await pool.query(
             `INSERT INTO teachers (teacher_code, name_kh, name_en, gender, dob, phone, email, role_title, specialized_subject, base_salary, status, hire_date, photo_url)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [tCode, name_kh.trim(), (name_en || '').trim(), gender || 'Male', fmtDate(dob), (phone || '').trim(), (email || '').trim(), role_title || 'គ្រូបង្រៀន', (specialized_subject || '').trim(), parseFloat(base_salary) || 0, status || 'Active', fmtDate(hire_date), photo_url || null]
+            [tCode, safeNameKh, (name_en || '').trim(), gender || 'Male', fmtDate(dob), (phone || '').trim(), (email || '').trim(), role_title || 'គ្រូបង្រៀន', (specialized_subject || '').trim(), parseFloat(base_salary) || 0, status || 'Active', fmtDate(hire_date), safePhoto]
         );
         invalidateMemberCache();
         return res.json({ success: true, message: 'បានចុះឈ្មោះគ្រូជោគជ័យ!' });
-    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+    } catch (e) {
+        console.error('[Error] POST /api/teachers:', e);
+        return res.status(500).json({ success: false, error: e.message });
+    }
 });
 
 app.put('/api/teachers/:id', async (req, res) => {
     const { id } = req.params;
     const { name_kh, name_en, gender, dob, phone, email, role_title, specialized_subject, base_salary, status, hire_date, photo_url } = req.body;
     try {
+        const safeNameKh = (name_kh || '').trim();
+        if (!safeNameKh) {
+            return res.status(400).json({ success: false, error: 'ឈ្មោះគ្រូជាភាសាខ្មែរត្រូវតែបំពេញ' });
+        }
+        const safePhoto = (typeof photo_url === 'string' && photo_url.trim().length > 0) ? photo_url.trim() : null;
         await pool.query(
             `UPDATE teachers SET name_kh = ?, name_en = ?, gender = ?, dob = ?, phone = ?, email = ?, role_title = ?, specialized_subject = ?, base_salary = ?, status = COALESCE(?, status), hire_date = ?, photo_url = ? WHERE id = ?`,
-            [name_kh.trim(), (name_en || '').trim(), gender || 'Male', fmtDate(dob), (phone || '').trim(), (email || '').trim(), role_title || 'គ្រូបង្រៀន', (specialized_subject || '').trim(), parseFloat(base_salary) || 0, status || 'Active', fmtDate(hire_date), photo_url || null, id]
+            [safeNameKh, (name_en || '').trim(), gender || 'Male', fmtDate(dob), (phone || '').trim(), (email || '').trim(), role_title || 'គ្រូបង្រៀន', (specialized_subject || '').trim(), parseFloat(base_salary) || 0, status || 'Active', fmtDate(hire_date), safePhoto, id]
         );
         invalidateMemberCache();
         return res.json({ success: true, message: 'បានកែប្រែទិន្នន័យគ្រូជោគជ័យ!' });
-    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+    } catch (e) {
+        console.error('[Error] PUT /api/teachers/:id:', e);
+        return res.status(500).json({ success: false, error: e.message });
+    }
 });
 
 app.delete('/api/teachers/:id', async (req, res) => {

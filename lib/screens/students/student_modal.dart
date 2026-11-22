@@ -222,7 +222,7 @@ class _StudentModalState extends State<StudentModal> {
         Uri.parse(url),
         headers: {'Content-Type': 'application/json; charset=utf-8'},
         body: jsonEncode(payload),
-      ).timeout(const Duration(seconds: 4));
+      ).timeout(const Duration(seconds: 30));
 
       String responseBody = utf8.decode(res.bodyBytes);
       dynamic data;

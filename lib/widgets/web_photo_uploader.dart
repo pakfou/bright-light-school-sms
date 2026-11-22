@@ -1,8 +1,8 @@
 // ignore_for_file: avoid_web_libraries_in_flutter
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 // ignore: deprecated_member_use
-// import 'dart:html' as html;
-import 'dart:typed_data';
+import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -40,22 +40,67 @@ class _WebPhotoUploaderState extends State<WebPhotoUploader> {
     }
   }
 
-  // មុខងារចុចដើម្បីបើក File Picker ពីកុំព្យូទ័រ
-  Future<void> _openFilePicker() async {
+  // មុខងារចុចដើម្បីបើក File Picker ពីកុំព្យូទ័រ និងបង្រួមទំហំរូបភាព (Resize & Compress via Canvas)
+  void _openFilePicker() {
+    if (kIsWeb) {
+      final html.FileUploadInputElement uploadInput = html.FileUploadInputElement();
+      uploadInput.accept = 'image/*';
+      uploadInput.click();
+
+      uploadInput.onChange.listen((event) {
+        final files = uploadInput.files;
+        if (files != null && files.isNotEmpty) {
+          final file = files[0];
+          final reader = html.FileReader();
+          reader.readAsDataUrl(file);
+          reader.onLoadEnd.listen((e) {
+            final img = html.ImageElement(src: reader.result as String);
+            img.onLoad.listen((_) {
+              const int targetWidth = 350;
+              final num naturalWidth = img.width ?? targetWidth;
+              final double scale = targetWidth / (naturalWidth > 0 ? naturalWidth : targetWidth);
+              final int targetHeight = ((img.height ?? targetWidth) * scale).round();
+
+              final canvas = html.CanvasElement(width: targetWidth, height: targetHeight);
+              final ctx = canvas.context2D;
+              ctx.drawImageScaled(img, 0, 0, targetWidth, targetHeight);
+
+              final String compressedBase64 = canvas.toDataUrl('image/jpeg', 0.75);
+              if (mounted) {
+                setState(() {
+                  final commaIdx = compressedBase64.indexOf(',');
+                  _previewBytes = base64Decode(compressedBase64.substring(commaIdx + 1));
+                  widget.photoController.text = compressedBase64;
+                });
+              }
+            });
+          });
+        }
+      });
+    } else {
+      _pickImageFallback();
+    }
+  }
+
+  Future<void> _pickImageFallback() async {
     try {
       final ImagePicker picker = ImagePicker();
-      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 350,
+        maxHeight: 350,
+        imageQuality: 75,
+      );
 
       if (image != null) {
         final bytes = await image.readAsBytes();
         final base64String = base64Encode(bytes);
-        final ext = image.name.split('.').last.toLowerCase();
-        final mimeType = ext == 'png' ? 'png' : 'jpeg';
-        
-        setState(() {
-          _previewBytes = bytes;
-          widget.photoController.text = 'data:image/$mimeType;base64,$base64String';
-        });
+        if (mounted) {
+          setState(() {
+            _previewBytes = bytes;
+            widget.photoController.text = 'data:image/jpeg;base64,$base64String';
+          });
+        }
       }
     } catch (e) {
       debugPrint('Error picking image: $e');

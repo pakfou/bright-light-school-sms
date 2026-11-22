@@ -118,9 +118,9 @@ class _TeacherModalState extends State<TeacherModal> {
       final picker = ImagePicker();
       final XFile? file = await picker.pickImage(
         source: ImageSource.gallery,
-        maxWidth: 800,
-        maxHeight: 800,
-        imageQuality: 85,
+        maxWidth: 350,
+        maxHeight: 350,
+        imageQuality: 75,
       );
 
       if (file != null) {
@@ -184,7 +184,7 @@ class _TeacherModalState extends State<TeacherModal> {
         Uri.parse(url),
         headers: {'Content-Type': 'application/json; charset=utf-8'},
         body: jsonEncode(payload),
-      ).timeout(const Duration(seconds: 4));
+      ).timeout(const Duration(seconds: 30));
       final data = jsonDecode(utf8.decode(res.bodyBytes));
 
       if ((res.statusCode == 200 || res.statusCode == 201) &&
