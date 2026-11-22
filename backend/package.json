@@ -1,20 +1,19 @@
 {
-  "name": "school_management_app",
+  "name": "school_management_backend",
   "version": "1.0.0",
-  "description": "A new Flutter project.",
+  "description": "Studies Pro - Bright Light School Management Backend",
   "main": "server.js",
-  "directories": {
-    "lib": "lib",
-    "test": "test"
-  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
-    "tunnel": "npx -y localtunnel --port 5000 --local-host 127.0.0.1 --subdomain bls-bmc-2026",
-    "tunnel:cf": "..\\cloudflared.exe tunnel --url http://127.0.0.1:5000"
+    "tunnel": "npx -y localtunnel --port 5000 --local-host 127.0.0.1 --subdomain bls-bmc-2026"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "school",
+    "management",
+    "express",
+    "mysql"
+  ],
+  "author": "BLS",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {

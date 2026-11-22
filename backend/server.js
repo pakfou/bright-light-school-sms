@@ -192,10 +192,10 @@ app.get('/console', (req, res) => {
     }
 });
 
-// Serve Flutter Web from ../build/web (fresh build) or ./public
+// Serve Flutter Web from ./public or ../build/web (fallback)
 const candidateWebDirs = [
-    path.join(__dirname, '../build/web'),
-    path.join(__dirname, 'public')
+    path.join(__dirname, 'public'),
+    path.join(__dirname, '../build/web')
 ];
 const activeWebDir = candidateWebDirs.find(d => fs.existsSync(path.join(d, 'index.html'))) || path.join(__dirname, 'public');
 
@@ -221,7 +221,7 @@ if (activeWebDir !== path.join(__dirname, 'public')) {
 }
 
 // Serve uploaded user photos and files
-const uploadsDir = path.join(__dirname, '..', 'uploads');
+const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
     try { fs.mkdirSync(uploadsDir, { recursive: true }); } catch (_) {}
 }
@@ -826,9 +826,13 @@ async function sendTelegramAlert(message, chatId = null) {
 }
 
 async function downloadKhmerFonts() {
-    const fontsDir = path.join(__dirname, '..', 'assets', 'fonts');
+    const candidateFontDirs = [
+        path.join(__dirname, 'assets', 'fonts'),
+        path.join(__dirname, 'public', 'assets', 'fonts')
+    ];
+    let fontsDir = candidateFontDirs.find(d => fs.existsSync(d)) || candidateFontDirs[0];
     if (!fs.existsSync(fontsDir)) {
-        fs.mkdirSync(fontsDir, { recursive: true });
+        try { fs.mkdirSync(fontsDir, { recursive: true }); } catch (_) {}
     }
 
     const fontsToDownload = [
@@ -876,7 +880,11 @@ app.get(['/', '/dashboard', '/console'], (req, res) => {
 
 app.get('/api/setup/fonts', async (req, res) => {
     await downloadKhmerFonts().catch(() => {});
-    const fontsDir = path.join(__dirname, '..', 'assets', 'fonts');
+    const candidateFontDirs = [
+        path.join(__dirname, 'assets', 'fonts'),
+        path.join(__dirname, 'public', 'assets', 'fonts')
+    ];
+    const fontsDir = candidateFontDirs.find(d => fs.existsSync(d)) || candidateFontDirs[0];
     const files = fs.existsSync(fontsDir) ? fs.readdirSync(fontsDir) : [];
     res.json({ success: true, downloaded: files });
 });
@@ -2684,8 +2692,16 @@ const generateInvoicePdf = async (req, res) => {
         doc.pipe(res);
 
         // Check for Khmer fonts
-        const fontPath = path.join(__dirname, '..', 'assets', 'fonts', 'KhmerOSbattambang.ttf');
-        const boldFontPath = path.join(__dirname, '..', 'assets', 'fonts', 'Battambang-Bold.ttf');
+        const candidateFontDirs = [
+            path.join(__dirname, 'assets', 'fonts'),
+            path.join(__dirname, 'public', 'assets', 'fonts'),
+            path.join(__dirname, '..', 'assets', 'fonts')
+        ];
+        const fontDir = candidateFontDirs.find(d => fs.existsSync(path.join(d, 'KhmerOSbattambang.ttf'))) || candidateFontDirs[0];
+        const fontPath = path.join(fontDir, 'KhmerOSbattambang.ttf');
+        const boldFontPath = fs.existsSync(path.join(fontDir, 'KhmerOSbattambang-Bold.ttf'))
+            ? path.join(fontDir, 'KhmerOSbattambang-Bold.ttf')
+            : (fs.existsSync(path.join(fontDir, 'Battambang-Bold.ttf')) ? path.join(fontDir, 'Battambang-Bold.ttf') : fontPath);
         const hasKhmerFont = fs.existsSync(fontPath);
 
         if (hasKhmerFont) {
