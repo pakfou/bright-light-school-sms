@@ -520,13 +520,17 @@ app.get(['/api', '/api/'], async (req, res) => {
 });
 
 const fmtDate = (d) => d ? d.toString().split('T')[0].substring(0, 10) : null;
-const safeVal = (val, defaultVal = null) => {
-    if (val === undefined || val === 'undefined' || val === null || val === 'null') return defaultVal;
-    if (typeof val === 'string') {
-        const trimmed = val.trim();
-        return trimmed.length === 0 ? defaultVal : trimmed;
+const clean = (v) => {
+    if (v === undefined || v === 'undefined' || v === null || v === 'null' || v === '') return null;
+    if (typeof v === 'string') {
+        const trimmed = v.trim();
+        return trimmed.length === 0 ? null : trimmed;
     }
-    return val;
+    return v;
+};
+const safeVal = (val, defaultVal = null) => {
+    const res = clean(val);
+    return res !== null ? res : defaultVal;
 };
 
 // Auto-create critical tables and indexes for instant performance & stability
@@ -1756,10 +1760,13 @@ app.post(['/api/classrooms', '/classrooms'], async (req, res) => {
     try {
         await pool.query(
             'INSERT INTO classrooms (class_name, grade_level_id, level_type, shift, room_number, capacity, teacher_name, academic_year) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            [class_name, grade_level_id || null, level_type || study_type || 'Full-Time', shift || 'Morning', room_number || 'Room-01', capacity || 30, teacher_name || '', academic_year || '2025-2026']
+            [clean(class_name) || 'ថ្នាក់រៀន', (grade_level_id && parseInt(grade_level_id, 10) > 0) ? parseInt(grade_level_id, 10) : null, clean(level_type) || clean(study_type) || 'Full-Time', clean(shift) || 'Morning', clean(room_number) || 'Room-01', parseInt(capacity, 10) || 30, clean(teacher_name) || '', clean(academic_year) || '2025-2026']
         );
         return res.json({ success: true, message: 'បានបង្កើតបន្ទប់រៀនជោគជ័យ!' });
-    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+    } catch (e) {
+        console.error('SQL Error [POST /api/classrooms]:', e);
+        return res.status(500).json({ success: false, error: e.message });
+    }
 });
 
 app.put(['/api/classrooms/:id', '/classrooms/:id'], async (req, res) => {

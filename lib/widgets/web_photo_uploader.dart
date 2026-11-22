@@ -56,7 +56,7 @@ class _WebPhotoUploaderState extends State<WebPhotoUploader> {
           reader.onLoadEnd.listen((e) {
             final img = html.ImageElement(src: reader.result as String);
             img.onLoad.listen((_) {
-              const int targetWidth = 350;
+              const int targetWidth = 320;
               final num naturalWidth = img.width ?? targetWidth;
               final double scale = targetWidth / (naturalWidth > 0 ? naturalWidth : targetWidth);
               final int targetHeight = ((img.height ?? targetWidth) * scale).round();
@@ -65,7 +65,7 @@ class _WebPhotoUploaderState extends State<WebPhotoUploader> {
               final ctx = canvas.context2D;
               ctx.drawImageScaled(img, 0, 0, targetWidth, targetHeight);
 
-              final String compressedBase64 = canvas.toDataUrl('image/jpeg', 0.75);
+              final String compressedBase64 = canvas.toDataUrl('image/jpeg', 0.7);
               if (mounted) {
                 setState(() {
                   final commaIdx = compressedBase64.indexOf(',');
