@@ -353,7 +353,8 @@ class _IdCardCreatorViewState extends State<IdCardCreatorView> {
   String _cardSide = 'Both';
   String _bgPattern = 'Seal';
   String _themeColor = 'Royal Blue';
-  bool _hasLanyard = false;
+  // ignore: prefer_final_fields
+  final bool _hasLanyard = false;
   bool _hasGloss = true;
   // ignore: prefer_final_fields, unused_field
   double _previewScale = 1.0;

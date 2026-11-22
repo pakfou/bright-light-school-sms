@@ -324,7 +324,8 @@ class _IdCardStudioScreenState extends State<IdCardStudioScreen> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.25),
+            // ignore: deprecated_member_use
+            color: Colors.black.withValues(alpha: 0.25),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -474,7 +475,8 @@ class _IdCardStudioScreenState extends State<IdCardStudioScreen> {
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(10),
                           boxShadow: [
-                            BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 4),
+                            // ignore: deprecated_member_use
+                            BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 4),
                           ],
                         ),
                         child: Column(
@@ -514,7 +516,8 @@ class _IdCardStudioScreenState extends State<IdCardStudioScreen> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.25),
+            // ignore: deprecated_member_use
+            color: Colors.black.withValues(alpha: 0.25),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -659,7 +662,8 @@ class _IdCardStudioScreenState extends State<IdCardStudioScreen> {
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(10),
                           boxShadow: [
-                            BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 4),
+                            // ignore: deprecated_member_use
+                            BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 4),
                           ],
                         ),
                         child: Column(
@@ -697,7 +701,8 @@ class _IdCardStudioScreenState extends State<IdCardStudioScreen> {
         border: Border.all(color: const Color(0xFFCBD5E1), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.12),
+            // ignore: deprecated_member_use
+            color: Colors.black.withValues(alpha: 0.12),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),

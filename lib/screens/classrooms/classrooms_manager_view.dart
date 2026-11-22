@@ -679,7 +679,8 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                                 : null);
 
                       return DropdownButtonFormField<int>(
-                        value: effectiveLevel,
+                        // ignore: deprecated_member_use
+                        initialValue: effectiveLevel,
                         isExpanded: true,
                         decoration: InputDecoration(
                           labelText: 'ជ្រើសរើសកម្រិតសិក្សា',
@@ -737,7 +738,8 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                       const SizedBox(width: 12),
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: shift,
+                          // ignore: deprecated_member_use
+                          initialValue: shift,
                           decoration: InputDecoration(
                             labelText: 'វេនសិក្សា',
                             labelStyle: const TextStyle(
@@ -798,7 +800,8 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                   const SizedBox(height: 18),
                   // Dropdown គ្រូទទួលបន្ទុក
                   DropdownButtonFormField<String>(
-                    value: selectedTeacher,
+                    // ignore: deprecated_member_use
+                    initialValue: selectedTeacher,
                     isExpanded: true,
                     decoration: InputDecoration(
                       labelText: 'គ្រូទទួលបន្ទុក (In-charge Teacher)',
@@ -825,7 +828,8 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                   const SizedBox(height: 18),
                   // Dropdown ឆ្នាំសិក្សា
                   DropdownButtonFormField<String>(
-                    value: academicYear,
+                    // ignore: deprecated_member_use
+                    initialValue: academicYear,
                     isExpanded: true,
                     decoration: InputDecoration(
                       labelText: 'ឆ្នាំសិក្សា (Academic Year)',
@@ -1036,7 +1040,8 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                           : (levelItems.isNotEmpty ? levelItems.first.value : null);
 
                       return DropdownButtonFormField<int>(
-                        value: effectiveLevel,
+                        // ignore: deprecated_member_use
+                        initialValue: effectiveLevel,
                         isExpanded: true,
                         decoration: InputDecoration(
                           labelText: 'ជ្រើសរើសកម្រិតសិក្សា',
@@ -1072,7 +1077,8 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                       const SizedBox(width: 12),
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: shift,
+                          // ignore: deprecated_member_use
+                          initialValue: shift,
                           decoration: InputDecoration(
                             labelText: 'វេនសិក្សា',
                             labelStyle: const TextStyle(fontFamily: 'Khmer OS Battambang', fontSize: 13, color: Color(0xFF64748B)),
@@ -1095,7 +1101,8 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                   const SizedBox(height: 18),
                   // Dropdown គ្រូទទួលបន្ទុក
                   DropdownButtonFormField<String>(
-                    value: selectedTeacher,
+                    // ignore: deprecated_member_use
+                    initialValue: selectedTeacher,
                     isExpanded: true,
                     decoration: InputDecoration(
                       labelText: 'គ្រូទទួលបន្ទុក (In-charge Teacher)',
@@ -1118,7 +1125,8 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                   const SizedBox(height: 18),
                   // Dropdown ឆ្នាំសិក្សា
                   DropdownButtonFormField<String>(
-                    value: academicYear,
+                    // ignore: deprecated_member_use
+                    initialValue: academicYear,
                     isExpanded: true,
                     decoration: InputDecoration(
                       labelText: 'ឆ្នាំសិក្សា (Academic Year)',

@@ -110,37 +110,27 @@ class AppTheme {
   // ─── Font Families ───
   static const String fontKhmerMuol = 'Khmer OS Muol Light';
   static const String fontKhmerBattambang = 'Khmer OS Battambang';
-  static const String fontKhmerModern = 'Kantumruy Pro';
+  static const String fontKhmerModern = 'Battambang';
   static const String fontEnglishHeading = 'Inter';
 
   // Fallbacks for web and cross-platform
   static const List<String> khmerMuolFallback = [
     'Khmer OS Muol Light',
+    'Moul',
     'Khmer OS Muol',
     'Noto Serif Khmer',
-    'Segoe UI Symbol',
-    'Segoe UI',
-    'Arial',
     'sans-serif',
   ];
   static const List<String> khmerHeadingFallback = [
-    'Kantumruy Pro',
+    'Battambang',
     'Khmer OS Battambang',
-    'Noto Sans Khmer',
     'Inter',
-    'Segoe UI Symbol',
-    'Segoe UI',
-    'Arial',
     'sans-serif',
   ];
   static const List<String> khmerBattambangFallback = [
     'Khmer OS Battambang',
-    'Kantumruy Pro',
-    'Noto Sans Khmer',
+    'Battambang',
     'Inter',
-    'Segoe UI Symbol',
-    'Segoe UI',
-    'Arial',
     'sans-serif',
   ];
   static const List<String> englishHeadingFallback = [

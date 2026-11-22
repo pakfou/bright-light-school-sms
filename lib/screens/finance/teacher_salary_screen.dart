@@ -36,7 +36,7 @@ class _TeacherSalaryScreenState extends State<TeacherSalaryScreen> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0D9488).withOpacity(0.1),
+                          color: const Color(0xFF0D9488).withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: const Icon(Icons.receipt_long, color: Color(0xFF0D9488), size: 24),
@@ -299,7 +299,7 @@ class _TeacherSalaryScreenState extends State<TeacherSalaryScreen> {
                   ),
                   child: ListView.separated(
                     itemCount: store.teacherSalaries.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    separatorBuilder: (_, _) => const Divider(height: 1),
                     itemBuilder: (ctx, i) {
                       final sal = store.teacherSalaries[i];
                       final isPaid = sal['status'] == 'PAID';
@@ -310,7 +310,7 @@ class _TeacherSalaryScreenState extends State<TeacherSalaryScreen> {
                           children: [
                             CircleAvatar(
                               radius: 22,
-                              backgroundColor: const Color(0xFF0D9488).withOpacity(0.12),
+                              backgroundColor: const Color(0xFF0D9488).withValues(alpha: 0.12),
                               child: const Icon(Icons.person, color: Color(0xFF0D9488), size: 24),
                             ),
                             const SizedBox(width: 16),
@@ -460,7 +460,7 @@ class _TeacherSalaryScreenState extends State<TeacherSalaryScreen> {
           children: [
             Container(
               padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
               child: Icon(icon, color: color, size: 24),
             ),
             const SizedBox(width: 12),

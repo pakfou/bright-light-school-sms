@@ -12,7 +12,7 @@ class StudentDetailsScreen extends StatefulWidget {
 
 class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
   String _searchQuery = '';
-  String _selectedClassFilter = 'All';
+  final String _selectedClassFilter = 'All';
   String _selectedProgramFilter = 'All';
 
   void _openStudentHistoryModal(Student student) {
@@ -352,9 +352,9 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
+          color: color.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withOpacity(0.2)),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -419,7 +419,7 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: gender,
+                          initialValue: gender,
                           decoration: const InputDecoration(labelText: 'ភេទ'),
                           items: const [
                             DropdownMenuItem(value: 'M', child: Text('ប្រុស (Male)')),
@@ -431,7 +431,7 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: DropdownButtonFormField<ProgramType>(
-                          value: progType,
+                          initialValue: progType,
                           decoration: const InputDecoration(labelText: 'ប្រភេទសិក្សា'),
                           items: const [
                             DropdownMenuItem(value: ProgramType.fullTime, child: Text('សិស្សពេញម៉ោង')),
@@ -444,7 +444,7 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
                   ),
                   const SizedBox(height: 10),
                   DropdownButtonFormField<String>(
-                    value: classId,
+                    initialValue: classId,
                     decoration: const InputDecoration(labelText: 'ចាត់ចូលបន្ទប់ថ្នាក់'),
                     items: AppDataStore.instance.classrooms.map((c) {
                       return DropdownMenuItem(value: c.id, child: Text('${c.gradeLevel} - ${c.roomName}'));
@@ -746,7 +746,7 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
           children: [
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
               child: Icon(icon, color: color, size: 20),
             ),
             const SizedBox(width: 10),

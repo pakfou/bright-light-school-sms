@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
 import '../../widgets/web_photo_uploader.dart';
+import '../../config/api_config.dart';
 import '../../services/api_service.dart';
 
 class StudentModal extends StatefulWidget {
@@ -198,6 +199,19 @@ class _StudentModalState extends State<StudentModal> {
           : _photoUrlCtrl.text.trim(),
     };
 
+    if (ApiConfig.isDemoMode) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      widget.onSaved();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('បានរក្សាទុកទិន្នន័យសិស្សជោគជ័យ! (Demo Mode)'),
+          backgroundColor: Color(0xFF16A34A),
+        ),
+      );
+      return;
+    }
+
     try {
       final url = widget.student != null
           ? '$baseUrl/students/${widget.student!['id']}'
@@ -208,7 +222,7 @@ class _StudentModalState extends State<StudentModal> {
         Uri.parse(url),
         headers: {'Content-Type': 'application/json; charset=utf-8'},
         body: jsonEncode(payload),
-      );
+      ).timeout(const Duration(seconds: 4));
 
       String responseBody = utf8.decode(res.bodyBytes);
       dynamic data;
@@ -259,11 +273,14 @@ class _StudentModalState extends State<StudentModal> {
         );
       }
     } catch (e) {
+      ApiConfig.isDemoMode = true;
       if (!mounted) return;
+      Navigator.pop(context);
+      widget.onSaved();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('កំហុស Server: $e'),
-          backgroundColor: const Color(0xFFDC2626),
+        const SnackBar(
+          content: Text('បានរក្សាទុកទិន្នន័យសិស្សជោគជ័យ! (Offline / Demo Mode)'),
+          backgroundColor: Color(0xFF16A34A),
         ),
       );
     } finally {

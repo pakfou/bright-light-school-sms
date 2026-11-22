@@ -26,7 +26,9 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
             children: [
               Expanded(
                 child: DropdownButtonFormField<String>(
+                  // ignore: deprecated_member_use
                   value: _selectedClassId,
+                  initialValue: _selectedClassId,
                   decoration: const InputDecoration(
                     labelText: "ជ្រើសរើសបន្ទប់ថ្នាក់",
                     border: OutlineInputBorder(),
@@ -40,7 +42,9 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
               const SizedBox(width: 16),
               Expanded(
                 child: DropdownButtonFormField<String>(
+                  // ignore: deprecated_member_use
                   value: _selectedSubject,
+                  initialValue: _selectedSubject,
                   decoration: const InputDecoration(
                     labelText: "មុខវិជ្ជា",
                     border: OutlineInputBorder(),
@@ -80,7 +84,7 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
               ),
               child: ListView.separated(
                 itemCount: store.students.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
+                separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (ctx, i) {
                   final s = store.students[i];
                   return Padding(

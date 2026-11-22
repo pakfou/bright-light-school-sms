@@ -78,7 +78,8 @@ class _AttendanceScannerState extends State<AttendanceScanner> {
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    value: _selectedClassId,
+                    // ignore: deprecated_member_use
+                    initialValue: _selectedClassId,
                     decoration: const InputDecoration(
                       labelText: "ជ្រើសរើសថ្នាក់ដែលត្រូវស្រង់វត្តមាន",
                       border: OutlineInputBorder(),

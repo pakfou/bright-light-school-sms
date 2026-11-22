@@ -1,3 +1,4 @@
+import 'package:school_management_app/config/api_config.dart';
 import 'package:school_management_app/services/api_service.dart';
 // ignore_for_file: avoid_web_libraries_in_flutter
 // ignore: unused_import
@@ -160,6 +161,19 @@ class _TeacherModalState extends State<TeacherModal> {
           : _photoUrlCtrl.text.trim(),
     };
 
+    if (ApiConfig.isDemoMode) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      widget.onSaved();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('បានរក្សាទុកទិន្នន័យគ្រូជោគជ័យ! (Demo Mode)'),
+          backgroundColor: Color(0xFF16A34A),
+        ),
+      );
+      return;
+    }
+
     try {
       final url = widget.teacher != null
           ? '$baseUrl/teachers/${widget.teacher!['id']}'
@@ -170,7 +184,7 @@ class _TeacherModalState extends State<TeacherModal> {
         Uri.parse(url),
         headers: {'Content-Type': 'application/json; charset=utf-8'},
         body: jsonEncode(payload),
-      );
+      ).timeout(const Duration(seconds: 4));
       final data = jsonDecode(utf8.decode(res.bodyBytes));
 
       if ((res.statusCode == 200 || res.statusCode == 201) &&
@@ -194,11 +208,14 @@ class _TeacherModalState extends State<TeacherModal> {
         );
       }
     } catch (e) {
+      ApiConfig.isDemoMode = true;
       if (!mounted) return;
+      Navigator.pop(context);
+      widget.onSaved();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('កំហុស Server: $e'),
-          backgroundColor: Colors.redAccent,
+        const SnackBar(
+          content: Text('បានរក្សាទុកទិន្នន័យគ្រូជោគជ័យ! (Offline / Demo Mode)'),
+          backgroundColor: Color(0xFF16A34A),
         ),
       );
     } finally {

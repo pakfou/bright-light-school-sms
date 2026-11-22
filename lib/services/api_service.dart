@@ -768,14 +768,14 @@ class ApiService {
     int? verifiedBy,
   }) async {
     try {
+      final payload = <String, dynamic>{'action': action};
+      if (rejectionReason != null) payload['rejectionReason'] = rejectionReason;
+      if (verifiedBy != null) payload['verifiedBy'] = verifiedBy;
+
       final res = await http.patch(
         Uri.parse('$baseUrl/payments/verify/$invoiceId'),
         headers: _headers,
-        body: jsonEncode({
-          'action': action,
-          if (rejectionReason != null) 'rejectionReason': rejectionReason,
-          if (verifiedBy != null) 'verifiedBy': verifiedBy,
-        }),
+        body: jsonEncode(payload),
       );
       return jsonDecode(utf8.decode(res.bodyBytes, allowMalformed: true));
     } catch (e) {
@@ -841,14 +841,14 @@ class ApiService {
     bool saveToDb = true,
   }) async {
     try {
+      final payload = <String, dynamic>{'save_to_db': saveToDb};
+      if (classroomId != null) payload['classroom_id'] = classroomId;
+      if (monthName != null) payload['month_name'] = monthName;
+
       final res = await http.post(
         Uri.parse('$baseUrl/grades/calculate-ranking'),
         headers: _headers,
-        body: jsonEncode({
-          if (classroomId != null) 'classroom_id': classroomId,
-          if (monthName != null) 'month_name': monthName,
-          'save_to_db': saveToDb,
-        }),
+        body: jsonEncode(payload),
       );
       return jsonDecode(utf8.decode(res.bodyBytes, allowMalformed: true));
     } catch (e) {

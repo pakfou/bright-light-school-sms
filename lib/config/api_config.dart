@@ -24,7 +24,14 @@ class ApiConfig {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getString('custom_api_base_url');
       if (saved != null && saved.trim().isNotEmpty) {
-        customBaseUrl = saved.trim();
+        final trimmed = saved.trim();
+        // Prevent mixed-content block on HTTPS web hosting
+        if (kIsWeb && Uri.base.scheme == 'https' && (trimmed.startsWith('http://127.0.0.1') || trimmed.startsWith('http://localhost'))) {
+          await prefs.remove('custom_api_base_url');
+          customBaseUrl = null;
+        } else {
+          customBaseUrl = trimmed;
+        }
       }
     } catch (_) {}
   }
@@ -45,7 +52,12 @@ class ApiConfig {
   /// Unified Base URL for all API requests across the system
   static String get baseUrl {
     if (customBaseUrl != null && customBaseUrl!.trim().isNotEmpty) {
-      return customBaseUrl!.trim();
+      final trimmed = customBaseUrl!.trim();
+      // On HTTPS hosted Web app, browser strictly prohibits calling plain http://127.0.0.1
+      if (kIsWeb && Uri.base.scheme == 'https' && (trimmed.startsWith('http://127.0.0.1') || trimmed.startsWith('http://localhost'))) {
+        return baseUrlConstant;
+      }
+      return trimmed;
     }
 
     if (kIsWeb) {

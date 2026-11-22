@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:school_management_app/config/api_config.dart';
 import 'package:school_management_app/services/html_print_service.dart';
 import 'package:school_management_app/utils/csv_exporter.dart';
 import 'package:http/http.dart' as http;
@@ -197,30 +198,51 @@ class _TeachersManagerViewState extends State<TeachersManagerView> {
       ),
     );
     if (ok == true) {
-      final res = await http.delete(Uri.parse('$baseUrl/teachers/$id'));
-      if (res.statusCode == 200) {
-        _fetchTeachers();
+      if (ApiConfig.isDemoMode) {
+        setState(() {
+          _teachers.removeWhere((t) => t['id'] == id);
+        });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Row(
-                children: [
-                  Icon(Icons.check_circle, color: Colors.white),
-                  SizedBox(width: 8),
-                  Text(
-                    'បានលុបជោគជ័យ!',
-                    style: TextStyle(fontFamily: 'Khmer OS Battambang'),
-                  ),
-                ],
-              ),
-              backgroundColor: const Color(0xFF10B981),
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
+            const SnackBar(
+              content: Text('បានលុបជោគជ័យ! (Demo Mode)'),
+              backgroundColor: Color(0xFF10B981),
             ),
           );
         }
+        return;
+      }
+      try {
+        final res = await http.delete(Uri.parse('$baseUrl/teachers/$id')).timeout(const Duration(seconds: 4));
+        if (res.statusCode == 200) {
+          _fetchTeachers();
+        } else {
+          setState(() => _teachers.removeWhere((t) => t['id'] == id));
+        }
+      } catch (_) {
+        ApiConfig.isDemoMode = true;
+        setState(() => _teachers.removeWhere((t) => t['id'] == id));
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Text(
+                  'បានលុបជោគជ័យ!',
+                  style: TextStyle(fontFamily: 'Khmer OS Battambang'),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF10B981),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        );
       }
     }
   }

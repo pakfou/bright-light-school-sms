@@ -37,7 +37,8 @@ class _StudentPaymentScreenState extends State<StudentPaymentScreen> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEF4444).withOpacity(0.1),
+                          // ignore: deprecated_member_use
+                          color: const Color(0xFFEF4444).withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: const Icon(Icons.qr_code_2, color: Color(0xFFDC2626), size: 24),
@@ -98,7 +99,8 @@ class _StudentPaymentScreenState extends State<StudentPaymentScreen> {
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: [
-                          BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10),
+                          // ignore: deprecated_member_use
+                          BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 10),
                         ],
                       ),
                       child: Column(
@@ -364,7 +366,8 @@ class _StudentPaymentScreenState extends State<StudentPaymentScreen> {
                       ? const Center(child: Text('គ្មានទិន្នន័យវិក្កយបត្រត្រូវនឹងលក្ខខណ្ឌស្វែងរកនេះទេ'))
                       : ListView.separated(
                           itemCount: filteredList.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          // ignore: unnecessary_underscores
+                          separatorBuilder: (_, _) => const Divider(height: 1),
                           itemBuilder: (ctx, i) {
                             final inv = filteredList[i];
                             final status = inv['status'] as String;
@@ -384,7 +387,8 @@ class _StudentPaymentScreenState extends State<StudentPaymentScreen> {
                               child: Row(
                                 children: [
                                   CircleAvatar(
-                                    backgroundColor: statusColor.withOpacity(0.12),
+                                    // ignore: deprecated_member_use
+                                    backgroundColor: statusColor.withValues(alpha: 0.12),
                                     child: Icon(
                                       status == 'PAID'
                                           ? Icons.check
@@ -429,7 +433,8 @@ class _StudentPaymentScreenState extends State<StudentPaymentScreen> {
                                         Text('កាលបរិច្ឆេទ៖ ${inv['dueDate']}', style: const TextStyle(fontSize: 12)),
                                         Chip(
                                           label: Text(statusLabel, style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold)),
-                                          backgroundColor: statusColor.withOpacity(0.1),
+                                          // ignore: deprecated_member_use
+                                          backgroundColor: statusColor.withValues(alpha: 0.1),
                                           visualDensity: VisualDensity.compact,
                                         ),
                                       ],
@@ -492,7 +497,8 @@ class _StudentPaymentScreenState extends State<StudentPaymentScreen> {
           children: [
             Container(
               padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+              // ignore: deprecated_member_use
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
               child: Icon(icon, color: color, size: 24),
             ),
             const SizedBox(width: 12),

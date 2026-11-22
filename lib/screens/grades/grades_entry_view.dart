@@ -6,6 +6,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import '../../config/api_config.dart';
 import '../../services/api_service.dart';
 import '../../services/html_print_service.dart';
 import '../../utils/app_logo.dart';
@@ -255,10 +256,31 @@ class _GradesEntryViewState extends State<GradesEntryView> {
     return idx == -1 ? 1 : idx + 1;
   }
 
+  void _applyDemoGradesData() {
+    _students = ApiService.demoStudents.map((s) => {
+      'id': s.id,
+      'student_code': s.studentCode,
+      'name_kh': s.nameKhmer,
+      'name_en': s.fullName,
+      'gender': s.gender,
+      'grade': 'ថ្នាក់ទី ៤A',
+      'class_name': 'O5 (Going Place 3)',
+      'classroom_id': s.classroomId,
+      'photo': null,
+    }).toList();
+    _classrooms = ApiService.demoClassrooms.map((c) => c.toJson()).toList();
+    if (mounted) setState(() => _isLoading = false);
+  }
+
   Future<void> _loadAll() async {
     setState(() => _isLoading = true);
+    if (ApiConfig.isDemoMode) {
+      _applyDemoGradesData();
+      return;
+    }
+
     try {
-      final sRes = await http.get(Uri.parse('$baseUrl/students'));
+      final sRes = await http.get(Uri.parse('$baseUrl/students')).timeout(const Duration(seconds: 4));
       if (sRes.statusCode == 200) {
         final data = jsonDecode(utf8.decode(sRes.bodyBytes))['data'];
         if (data != null && data is List) {
@@ -272,11 +294,11 @@ class _GradesEntryViewState extends State<GradesEntryView> {
         }
       }
     } catch (e) {
-      debugPrint('Error loading students: $e');
+      ApiConfig.isDemoMode = true;
     }
 
     try {
-      final cRes = await http.get(Uri.parse('$baseUrl/classrooms'));
+      final cRes = await http.get(Uri.parse('$baseUrl/classrooms')).timeout(const Duration(seconds: 4));
       if (cRes.statusCode == 200) {
         final data = jsonDecode(utf8.decode(cRes.bodyBytes))['data'];
         if (data != null && data is List) {
@@ -284,11 +306,11 @@ class _GradesEntryViewState extends State<GradesEntryView> {
         }
       }
     } catch (e) {
-      debugPrint('Error loading classrooms: $e');
+      ApiConfig.isDemoMode = true;
     }
 
     try {
-      final gRes = await http.get(Uri.parse('$baseUrl/grades'));
+      final gRes = await http.get(Uri.parse('$baseUrl/grades')).timeout(const Duration(seconds: 4));
       if (gRes.statusCode == 200) {
         final gData = jsonDecode(utf8.decode(gRes.bodyBytes))['data'];
         if (gData != null && gData is List) {
@@ -315,42 +337,12 @@ class _GradesEntryViewState extends State<GradesEntryView> {
         }
       }
     } catch (e) {
-      debugPrint('Error loading grades: $e');
+      ApiConfig.isDemoMode = true;
     }
 
-    if (_students.isEmpty) {
-      _students = [
-        {
-          'id': 1,
-          'student_code': 'STU1001',
-          'name_kh': 'សុខ ម៉ារី',
-          'name_en': 'Sok Mary',
-          'gender': 'ស្រី',
-          'grade': 'ថ្នាក់ទី ៤A',
-          'class_name': 'ថ្នាក់ទី ៤A',
-          'photo': null,
-        },
-        {
-          'id': 2,
-          'student_code': 'STU1002',
-          'name_kh': 'ចាន់ ករុណា',
-          'name_en': 'Chan Karuna',
-          'gender': 'ប្រុស',
-          'grade': 'ថ្នាក់ទី ៥A',
-          'class_name': 'ថ្នាក់ទី ៥A',
-          'photo': null,
-        },
-        {
-          'id': 3,
-          'student_code': 'STU1003',
-          'name_kh': 'គីម សេង',
-          'name_en': 'Kim Seng',
-          'gender': 'ប្រុស',
-          'grade': 'ថ្នាក់ទី ៣A',
-          'class_name': 'ថ្នាក់ទី ៣A',
-          'photo': null,
-        },
-      ];
+    if (_students.isEmpty || ApiConfig.isDemoMode) {
+      _applyDemoGradesData();
+      return;
     }
     if (mounted) setState(() => _isLoading = false);
   }

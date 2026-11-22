@@ -479,7 +479,7 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen> {
                 ? const Center(child: Text('មិនទាន់មានទិន្នន័យកាលវិភាគសម្រាប់គ្រូរូបនេះនៅឡើយទេ'))
                 : ListView.separated(
                     itemCount: list.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    separatorBuilder: (_, _) => const Divider(height: 1),
                     itemBuilder: (ctx, i) {
                       final item = list[i];
                       return Container(
@@ -585,7 +585,7 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen> {
           Expanded(
             child: ListView.separated(
               itemCount: _academicCalendarEvents.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              separatorBuilder: (_, _) => const SizedBox(height: 12),
               itemBuilder: (ctx, i) {
                 final ev = _academicCalendarEvents[i];
                 return Container(
@@ -602,7 +602,7 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen> {
                         width: 140,
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                         decoration: BoxDecoration(
-                          color: (ev['badgeColor'] as Color).withOpacity(0.1),
+                          color: (ev['badgeColor'] as Color).withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
@@ -632,7 +632,7 @@ class _WeeklyScheduleScreenState extends State<WeeklyScheduleScreen> {
                                     ev['type'],
                                     style: TextStyle(color: ev['badgeColor'], fontSize: 10, fontWeight: FontWeight.bold),
                                   ),
-                                  backgroundColor: (ev['badgeColor'] as Color).withOpacity(0.1),
+                                  backgroundColor: (ev['badgeColor'] as Color).withValues(alpha: 0.1),
                                   visualDensity: VisualDensity.compact,
                                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                 ),

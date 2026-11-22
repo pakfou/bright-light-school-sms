@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:school_management_app/providers/auth_provider.dart';
@@ -227,6 +228,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         onPressed: () {
                           setDialogState(() {
+                            if (kIsWeb && Uri.base.scheme == 'https') {
+                              testStatus = '⚠️ Web Hosting HTTPS មិនអាចភ្ជាប់ទៅកាន់ HTTP Localhost បានទេ (Browser Mixed Content Security Block)។';
+                              testStatusColor = const Color(0xFFD97706);
+                            }
                             controller.text = 'http://127.0.0.1:5000/api';
                           });
                         },

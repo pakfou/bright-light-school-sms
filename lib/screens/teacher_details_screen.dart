@@ -11,7 +11,7 @@ class TeacherDetailsScreen extends StatefulWidget {
 
 class _TeacherDetailsScreenState extends State<TeacherDetailsScreen> {
   String _searchQuery = '';
-  String _selectedSubjectFilter = 'All';
+  final String _selectedSubjectFilter = 'All';
 
   void _openTeacherBioModal(Teacher teacher) {
     showDialog(
@@ -330,9 +330,9 @@ class _TeacherDetailsScreenState extends State<TeacherDetailsScreen> {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
+          color: color.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withOpacity(0.2)),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -405,7 +405,7 @@ class _TeacherDetailsScreenState extends State<TeacherDetailsScreen> {
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: gender,
+                          initialValue: gender,
                           decoration: const InputDecoration(labelText: 'ភេទ'),
                           items: const [
                             DropdownMenuItem(value: 'M', child: Text('ប្រុស (Male)')),
@@ -702,7 +702,7 @@ class _TeacherDetailsScreenState extends State<TeacherDetailsScreen> {
           children: [
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
               child: Icon(icon, color: color, size: 20),
             ),
             const SizedBox(width: 10),

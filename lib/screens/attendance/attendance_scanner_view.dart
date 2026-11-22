@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:school_management_app/config/api_config.dart';
 import 'package:school_management_app/services/api_service.dart';
 
 class AttendanceScannerView extends StatefulWidget {
@@ -122,8 +123,20 @@ class _AttendanceScannerViewState extends State<AttendanceScannerView>
   }
 
   Future<void> _fetchClassrooms() async {
+    if (ApiConfig.isDemoMode) {
+      if (mounted) {
+        setState(() {
+          _classrooms = ApiService.demoClassrooms.map((c) => c.toJson()).toList();
+          if (_classrooms.isNotEmpty && _selectedClassroomId == null) {
+            final first = _classrooms[0];
+            _selectedClassroomId = first['id'] is int ? first['id'] : int.tryParse(first['id'].toString());
+          }
+        });
+      }
+      return;
+    }
     try {
-      final res = await http.get(Uri.parse('$baseUrl/classrooms'));
+      final res = await http.get(Uri.parse('$baseUrl/classrooms')).timeout(const Duration(seconds: 4));
       if (res.statusCode == 200) {
         final d = jsonDecode(utf8.decode(res.bodyBytes, allowMalformed: true));
         if (mounted) {
@@ -138,12 +151,31 @@ class _AttendanceScannerViewState extends State<AttendanceScannerView>
           });
         }
       }
-    } catch (_) {}
+    } catch (_) {
+      ApiConfig.isDemoMode = true;
+      if (mounted) {
+        setState(() {
+          _classrooms = ApiService.demoClassrooms.map((c) => c.toJson()).toList();
+          if (_classrooms.isNotEmpty && _selectedClassroomId == null) {
+            final first = _classrooms[0];
+            _selectedClassroomId = first['id'] is int ? first['id'] : int.tryParse(first['id'].toString());
+          }
+        });
+      }
+    }
   }
 
   Future<void> _fetchQuickStudents() async {
+    if (ApiConfig.isDemoMode) {
+      if (mounted) {
+        setState(() {
+          _quickStudents = ApiService.demoStudents.map((s) => s.toJson()).toList();
+        });
+      }
+      return;
+    }
     try {
-      final sRes = await http.get(Uri.parse('$baseUrl/students'));
+      final sRes = await http.get(Uri.parse('$baseUrl/students')).timeout(const Duration(seconds: 4));
       if (sRes.statusCode == 200) {
         final sd = jsonDecode(
           utf8.decode(sRes.bodyBytes, allowMalformed: true),
@@ -154,7 +186,14 @@ class _AttendanceScannerViewState extends State<AttendanceScannerView>
           });
         }
       }
-    } catch (_) {}
+    } catch (_) {
+      ApiConfig.isDemoMode = true;
+      if (mounted) {
+        setState(() {
+          _quickStudents = ApiService.demoStudents.map((s) => s.toJson()).toList();
+        });
+      }
+    }
   }
 
   Future<void> _fetchRecentScans() async {
@@ -244,6 +283,44 @@ class _AttendanceScannerViewState extends State<AttendanceScannerView>
       _isLoading = true;
       _scanResult = 'កំពុងដំណើរការទាញទិន្នន័យ...';
     });
+
+    if (ApiConfig.isDemoMode) {
+      final now = DateTime.now();
+      final timeStr =
+          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+      dynamic matched;
+      for (final s in _quickStudents) {
+        if ((s['student_code'] ?? '').toString().toLowerCase() == cleanCode.toLowerCase()) {
+          matched = s;
+          break;
+        }
+      }
+      final nameKh = matched != null ? (matched['name_kh'] ?? matched['nameKhmer'] ?? 'សិស្ស សាកល្បង') : 'សិស្ស ($cleanCode)';
+      final personMap = {
+        'code': cleanCode,
+        'name_kh': nameKh,
+        'name_en': matched != null ? (matched['name_en'] ?? matched['fullName'] ?? 'Demo Student') : 'Demo Student',
+        'class_name': matched != null ? (matched['class_name'] ?? 'ថ្នាក់រៀន') : 'ថ្នាក់រៀន',
+        'type': 'Student',
+        'photo_url': matched?['photo_url'] ?? matched?['photo'],
+        'status': 'Present',
+        'shift': _selectedShift,
+        'time_str': timeStr,
+        'message': 'វត្តមាន៖ $nameKh ($cleanCode) ជោគជ័យ (Demo)',
+        'success': true,
+      };
+      setState(() {
+        _isSuccess = true;
+        _scanResult = 'វត្តមាន៖ $nameKh ($cleanCode) ជោគជ័យ';
+        _lastScannedPerson = personMap;
+        _recentScans.removeWhere((s) => s['code'] == cleanCode);
+        _recentScans.insert(0, personMap);
+        _codeCtrl.clear();
+        _isLoading = false;
+      });
+      _focusNode.requestFocus();
+      return;
+    }
 
     try {
       final res = await http.post(

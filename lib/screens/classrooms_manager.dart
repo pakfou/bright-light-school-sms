@@ -52,7 +52,8 @@ class _ClassroomsManagerState extends State<ClassroomsManager> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<ProgramType>(
-                  value: progType,
+                  // ignore: deprecated_member_use
+                  initialValue: progType,
                   decoration: const InputDecoration(labelText: 'ប្រភេទកម្មវិធីសិក្សា', border: OutlineInputBorder()),
                   items: const [
                     DropdownMenuItem(value: ProgramType.fullTime, child: Text('សិស្សរៀនពេញម៉ោង')),
@@ -63,7 +64,8 @@ class _ClassroomsManagerState extends State<ClassroomsManager> {
                 const SizedBox(height: 12),
                 if (progType == ProgramType.fullTime)
                   DropdownButtonFormField<ShiftType>(
-                    value: shift,
+                    // ignore: deprecated_member_use
+                    initialValue: shift,
                     decoration: const InputDecoration(labelText: 'វេនសិក្សា (ពេញម៉ោង)', border: OutlineInputBorder()),
                     items: const [
                       DropdownMenuItem(value: ShiftType.morning, child: Text('ពេលព្រឹក')),
@@ -73,7 +75,8 @@ class _ClassroomsManagerState extends State<ClassroomsManager> {
                   )
                 else
                   DropdownButtonFormField<String>(
-                    value: subjectFocus,
+                    // ignore: deprecated_member_use
+                    initialValue: subjectFocus,
                     decoration: const InputDecoration(labelText: 'មុខវិជ្ជាក្រៅម៉ោង', border: OutlineInputBorder()),
                     items: const [
                       DropdownMenuItem(value: 'ភាសាអង់គ្លេស', child: Text('ភាសាអង់គ្លេស')),
@@ -340,7 +343,8 @@ class _ClassroomsManagerState extends State<ClassroomsManager> {
             ),
             child: ListView.separated(
               itemCount: store.classrooms.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
+              // ignore: unnecessary_underscores
+              separatorBuilder: (_, _) => const Divider(height: 1),
               itemBuilder: (ctx, i) {
                 final c = store.classrooms[i];
                 final isFullTime = c.programType == ProgramType.fullTime;
@@ -391,7 +395,8 @@ class _ClassroomsManagerState extends State<ClassroomsManager> {
         border: Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            // ignore: deprecated_member_use
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -498,7 +503,8 @@ class _ClassroomsManagerState extends State<ClassroomsManager> {
                               const Text('រាប់ជាថ្នាក់ប្តូរវេន (Handover): ', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF78350F))),
                               Switch(
                                 value: _countMergedRooms,
-                                activeColor: const Color(0xFFD97706),
+                                // ignore: deprecated_member_use
+                                activeThumbColor: const Color(0xFFD97706),
                                 onChanged: (v) => setState(() => _countMergedRooms = v),
                               ),
                             ],
@@ -661,7 +667,8 @@ class _ClassroomsManagerState extends State<ClassroomsManager> {
                       height: 58,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: const Color(0xFF1E3A8A).withOpacity(0.08),
+                        // ignore: deprecated_member_use
+                        color: const Color(0xFF1E3A8A).withValues(alpha: 0.08),
                         border: Border.all(color: const Color(0xFF1E3A8A), width: 1.5),
                       ),
                       child: const Center(
@@ -766,7 +773,8 @@ class _ClassroomsManagerState extends State<ClassroomsManager> {
                   final isRoomConflict = item.room == 'O1';
 
                   return TableRow(
-                    decoration: isRoomConflict ? BoxDecoration(color: const Color(0xFFFEF2F2).withOpacity(0.5)) : null,
+                    // ignore: deprecated_member_use
+                    decoration: isRoomConflict ? BoxDecoration(color: const Color(0xFFFEF2F2).withValues(alpha: 0.5)) : null,
                     children: [
                       // Nº
                       _TableCell('${item.no}', isCenter: true),
@@ -1085,7 +1093,8 @@ class _ClassroomsManagerState extends State<ClassroomsManager> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                // ignore: deprecated_member_use
+                color: color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(icon, color: color, size: 22),

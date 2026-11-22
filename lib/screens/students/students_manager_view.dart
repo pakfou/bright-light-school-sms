@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:school_management_app/config/api_config.dart';
 import 'package:school_management_app/utils/csv_exporter.dart';
 import 'package:http/http.dart' as http;
 import 'package:school_management_app/services/api_service.dart';
@@ -196,10 +197,32 @@ class _StudentsManagerViewState extends State<StudentsManagerView> {
       ),
     );
     if (ok == true) {
-      final res = await http.delete(Uri.parse('$baseUrl/students/$id'));
-      if (res.statusCode == 200) {
-        _fetchStudents();
-        // ignore: use_build_context_synchronously
+      if (ApiConfig.isDemoMode) {
+        setState(() {
+          _students.removeWhere((s) => s['id'] == id);
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('បានលុបជោគជ័យ! (Demo Mode)'),
+              backgroundColor: Color(0xFF10B981),
+            ),
+          );
+        }
+        return;
+      }
+      try {
+        final res = await http.delete(Uri.parse('$baseUrl/students/$id')).timeout(const Duration(seconds: 4));
+        if (res.statusCode == 200) {
+          _fetchStudents();
+        } else {
+          setState(() => _students.removeWhere((s) => s['id'] == id));
+        }
+      } catch (_) {
+        ApiConfig.isDemoMode = true;
+        setState(() => _students.removeWhere((s) => s['id'] == id));
+      }
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Row(
