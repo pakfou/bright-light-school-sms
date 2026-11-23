@@ -198,7 +198,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         color: Color(0xFF64748B),
                         size: 20,
                       ),
-                      hintText: 'https://bls-backend.onrender.com/api',
+                      hintText: 'https://bright-light-school-sms.onrender.com/api',
                       labelText: 'API Base URL',
                       labelStyle: AppTheme.khmerBody(fontSize: 12),
                     ),
@@ -211,12 +211,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       ActionChip(
                         avatar: const Icon(Icons.cloud_done_rounded, size: 14, color: Color(0xFF2563EB)),
                         label: Text(
-                          'Render Cloud (bls-backend.onrender.com)',
+                          'Render Cloud (bright-light-school-sms.onrender.com)',
                           style: AppTheme.khmerBody(fontSize: 10.5, fontWeight: FontWeight.bold),
                         ),
                         onPressed: () {
                           setDialogState(() {
-                            controller.text = 'https://bls-backend.onrender.com/api';
+                            controller.text = 'https://bright-light-school-sms.onrender.com/api';
                           });
                         },
                       ),

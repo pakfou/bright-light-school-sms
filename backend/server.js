@@ -72,7 +72,7 @@ app.get('/', async (req, res) => {
     } catch (_) {
         dbStatus = 'Disconnected';
     }
-    res.json({ status: 'Live', db: dbStatus });
+    res.json({ status: 'Live', server: 'bright-light-school-sms', db: dbStatus });
 });
 app.get(['/health', '/api/health'], async (req, res) => {
     let dbStatus = 'Connected';
@@ -81,7 +81,7 @@ app.get(['/health', '/api/health'], async (req, res) => {
     } catch (_) {
         dbStatus = 'Disconnected';
     }
-    res.json({ status: 'Live', db: dbStatus, time: new Date().toISOString() });
+    res.json({ status: 'Live', server: 'bright-light-school-sms', db: dbStatus, time: new Date().toISOString() });
 });
 app.get('/api/ping', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 

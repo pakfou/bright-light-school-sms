@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ApiConfig {
   /// Default Cloud Backend URL (Render Cloud Backend)
   static const String baseUrlConstant =
-      'https://bls-backend.onrender.com/api';
+      'https://bright-light-school-sms.onrender.com/api';
 
   /// Static Demo Admin credentials for offline fallback
   static const String demoAdminEmail = 'admin@brightlight.edu.kh';
@@ -25,8 +25,9 @@ class ApiConfig {
       final saved = prefs.getString('custom_api_base_url');
       if (saved != null && saved.trim().isNotEmpty) {
         final trimmed = saved.trim();
-        // Prevent mixed-content block on HTTPS web hosting
-        if (kIsWeb && Uri.base.scheme == 'https' && (trimmed.startsWith('http://127.0.0.1') || trimmed.startsWith('http://localhost'))) {
+        // Prevent mixed-content block on HTTPS web hosting or stale decommissioned render urls
+        if (trimmed.contains('bls-backend.onrender.com') ||
+            (kIsWeb && Uri.base.scheme == 'https' && (trimmed.startsWith('http://127.0.0.1') || trimmed.startsWith('http://localhost')))) {
           await prefs.remove('custom_api_base_url');
           customBaseUrl = null;
         } else {
@@ -53,6 +54,9 @@ class ApiConfig {
   static String get baseUrl {
     if (customBaseUrl != null && customBaseUrl!.trim().isNotEmpty) {
       final trimmed = customBaseUrl!.trim();
+      if (trimmed.contains('bls-backend.onrender.com')) {
+        return baseUrlConstant;
+      }
       // On HTTPS hosted Web app, browser strictly prohibits calling plain http://127.0.0.1
       if (kIsWeb && Uri.base.scheme == 'https' && (trimmed.startsWith('http://127.0.0.1') || trimmed.startsWith('http://localhost'))) {
         return baseUrlConstant;

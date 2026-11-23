@@ -90,7 +90,7 @@ class ApiService {
         'Server ឆ្លើយតបជាទម្រង់ HTML Web Page ជំនួសឱ្យ JSON API data។\n'
         'មូលហេតុ៖ Backend Server មិនទាន់ដំណើរការ ឬ Web App កំពុងភ្ជាប់ទៅកាន់ Firebase Static Hosting ដោយគ្មាន Backend Proxy។\n\n'
         'ដំណោះស្រាយ៖\n'
-        '1. ប្រសិនបើតេស្តលើកុំព្យូទ័រផ្ទាល់ សូមបើកតាម: https://bls-backend.onrender.com/app\n'
+        '1. ប្រសិនបើតេស្តលើកុំព្យូទ័រផ្ទាល់ សូមបើកតាម: https://bright-light-school-sms.onrender.com/app\n'
         '2. ឬបើក Backend Server ដោយវាយ: cd backend; node server.js\n'
         '3. ឬកំណត់ Cloud API URL តាមរយៈប៊ូតុង Server ⚙️ ខាងក្រោម។',
       );
@@ -201,18 +201,31 @@ class ApiService {
     final pass = (payload['password'] ?? '').toString().trim();
     final teacherCode = (payload['teacher_id_code'] ?? '').toString().trim();
 
-    try {
-      final res = await http.post(
-        Uri.parse('$baseUrl/login'),
-        headers: _headers,
-        body: jsonEncode(payload),
-      ).timeout(const Duration(seconds: 8));
-      final data = _safeJsonDecode(res);
-      if (data is Map<String, dynamic> && data['success'] == true) {
-        return data;
+    int attempts = 0;
+    while (attempts < 2) {
+      attempts++;
+      try {
+        final res = await http.post(
+          Uri.parse('$baseUrl/login'),
+          headers: _headers,
+          body: jsonEncode(payload),
+        ).timeout(const Duration(seconds: 30));
+        final data = _safeJsonDecode(res);
+        if (data is Map<String, dynamic>) {
+          if (data['success'] == true) {
+            ApiConfig.isDemoMode = false;
+            return data;
+          } else {
+            // Live server responded with an error (e.g., incorrect credentials)
+            return data;
+          }
+        }
+      } catch (e) {
+        debugPrint('Live login server attempt $attempts failed: $e');
+        if (attempts < 2) {
+          await Future.delayed(const Duration(milliseconds: 1500));
+        }
       }
-    } catch (e) {
-      debugPrint('Live login server failed: $e. Checking Demo Fallback...');
     }
 
     // 🌟 DEMO DATA FALLBACK WHEN SERVER IS OFFLINE
