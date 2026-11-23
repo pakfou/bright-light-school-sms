@@ -76,12 +76,21 @@ app.get('/', async (req, res) => {
 });
 app.get(['/health', '/api/health'], async (req, res) => {
     let dbStatus = 'Connected';
+    let dbError = null;
     try {
         await pool.query('SELECT 1');
-    } catch (_) {
+    } catch (err) {
         dbStatus = 'Disconnected';
+        dbError = err.message;
     }
-    res.json({ status: 'Live', server: 'bright-light-school-sms', db: dbStatus, time: new Date().toISOString() });
+    res.json({
+        status: 'Live',
+        server: 'bright-light-school-sms',
+        db: dbStatus,
+        dbHost: process.env.DB_HOST ? `${process.env.DB_HOST.slice(0, 8)}...` : 'not_set (defaulting to localhost)',
+        dbError: dbError,
+        time: new Date().toISOString()
+    });
 });
 app.get('/api/ping', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 
