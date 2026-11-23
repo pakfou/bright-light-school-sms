@@ -852,6 +852,21 @@ class _FinanceManagerViewState extends State<FinanceManagerView>
     );
   }
 
+  void _showSnackbar(String msg, Color bg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          msg,
+          style: const TextStyle(fontFamily: 'Khmer OS Battambang'),
+        ),
+        backgroundColor: bg,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+
   Future<void> _deletePayment(int id) async {
     final ok = await _confirmDelete('ការបង់ប្រាក់');
     if (ok == true) {
