@@ -962,6 +962,102 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
     );
   }
 
+  void _viewClassroomDialog(Map<String, dynamic> c) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Container(
+          width: 440,
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(Icons.meeting_room_outlined, color: Color(0xFF3B82F6), size: 26),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          c['class_name']?.toString() ?? 'ថ្នាក់រៀន',
+                          style: const TextStyle(
+                            fontFamily: 'Khmer OS Muol Light',
+                            fontSize: 16,
+                            color: Color(0xFF1E293B),
+                          ),
+                        ),
+                        Text(
+                          'បន្ទប់៖ ${c['room_number'] ?? 'N/A'} | ឆ្នាំសិក្សា៖ ${c['academic_year'] ?? '2025-2026'}',
+                          style: const TextStyle(
+                            fontFamily: 'Khmer OS Battambang',
+                            fontSize: 12,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    icon: const Icon(Icons.close, color: Color(0xFF94A3B8)),
+                  ),
+                ],
+              ),
+              const Divider(height: 28),
+              _detailRow('កម្រិតថ្នាក់', c['grade_level_name'] ?? c['grade_level'] ?? 'មិនទាន់កំណត់'),
+              _detailRow('គ្រូបន្ទុកថ្នាក់', c['teacher_name'] ?? 'មិនទាន់កំណត់'),
+              _detailRow('វេនសិក្សា', c['shift'] == 'Morning' ? 'ព្រឹក (Morning)' : (c['shift'] == 'Afternoon' ? 'រសៀល (Afternoon)' : 'យប់ (Evening)')),
+              _detailRow('ចំណុះសិស្សអតិបរមា', '${c['capacity'] ?? 30} នាក់'),
+              _detailRow('ចំនួនសិស្សជាក់ស្តែង', '${c['students_count'] ?? 0} នាក់'),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF3B82F6),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('យល់ព្រម', style: TextStyle(fontFamily: 'Khmer OS Battambang', fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontFamily: 'Khmer OS Battambang', color: Color(0xFF64748B), fontSize: 13)),
+          Text(value, style: const TextStyle(fontFamily: 'Khmer OS Battambang', fontWeight: FontWeight.bold, color: Color(0xFF1E293B), fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
   void _editClassroomDialog(Map<String, dynamic> c) {
     final nameCtrl = TextEditingController(text: c['class_name']?.toString() ?? '');
     final roomCtrl = TextEditingController(text: c['room_number']?.toString() ?? 'Room-01');
@@ -2205,6 +2301,12 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.end,
                                   children: [
+                                    _actionBtn(
+                                      Icons.visibility_outlined,
+                                      const Color(0xFF4F46E5),
+                                      () => _viewClassroomDialog(c),
+                                    ),
+                                    const SizedBox(width: 6),
                                     _actionBtn(
                                       Icons.edit_outlined,
                                       const Color(0xFF3B82F6),

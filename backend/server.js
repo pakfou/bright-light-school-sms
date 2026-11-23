@@ -1156,6 +1156,91 @@ app.post('/api/login', async (req, res) => {
 });
 
 // ==========================================
+// 1.1 USERS FULL CRUD (Admin / Staff Accounts)
+// ==========================================
+app.get(['/api/users', '/users'], async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT id, name, email, role, created_at FROM users ORDER BY id ASC');
+        return res.json({ success: true, data: rows });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.sqlMessage || e.message });
+    }
+});
+
+app.get(['/api/users/:id', '/users/:id'], async (req, res) => {
+    try {
+        const paramId = String(req.params.id || '').trim();
+        const numId = toNum(paramId, 0);
+        const [rows] = await pool.query('SELECT id, name, email, role, created_at FROM users WHERE id = ? OR email = ? LIMIT 1', [numId, paramId]);
+        if (!rows || rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញអ្នកប្រើប្រាស់ទេ' });
+        }
+        return res.json({ success: true, data: rows[0] });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.sqlMessage || e.message });
+    }
+});
+
+app.post(['/api/users', '/users'], async (req, res) => {
+    try {
+        const { name, email, password, role } = req.body;
+        if (!email || !password) {
+            return res.status(400).json({ success: false, message: 'សូមបញ្ចូល Email និងលេខសម្ងាត់' });
+        }
+        const hashedPassword = await bcrypt.hash(String(password).trim(), 10);
+        const [result] = await pool.query(
+            'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)',
+            [toNull(name) || 'Staff User', String(email).trim(), hashedPassword, toNull(role) || 'Staff']
+        );
+        return res.status(201).json({ success: true, id: result.insertId, message: 'បានបង្កើតគណនីអ្នកប្រើប្រាស់ជោគជ័យ!' });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.sqlMessage || e.message });
+    }
+});
+
+app.put(['/api/users/:id', '/users/:id'], async (req, res) => {
+    try {
+        const paramId = String(req.params.id || '').trim();
+        const numId = toNum(paramId, 0);
+        const { name, email, password, role } = req.body;
+        let updateQuery = 'UPDATE users SET name = COALESCE(?, name), role = COALESCE(?, role)';
+        const params = [toNull(name), toNull(role)];
+        if (email) {
+            updateQuery += ', email = ?';
+            params.push(String(email).trim());
+        }
+        if (password && String(password).trim().length > 0) {
+            const hashedPassword = await bcrypt.hash(String(password).trim(), 10);
+            updateQuery += ', password = ?';
+            params.push(hashedPassword);
+        }
+        updateQuery += ' WHERE id = ? OR email = ?';
+        params.push(numId, paramId);
+        const [result] = await pool.query(updateQuery, params);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញអ្នកប្រើប្រាស់សម្រាប់កែប្រែទេ' });
+        }
+        return res.json({ success: true, message: 'បានកែប្រែគណនីជោគជ័យ!' });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.sqlMessage || e.message });
+    }
+});
+
+app.delete(['/api/users/:id', '/users/:id'], async (req, res) => {
+    try {
+        const paramId = String(req.params.id || '').trim();
+        const numId = toNum(paramId, 0);
+        const [result] = await pool.query('DELETE FROM users WHERE id = ? OR email = ?', [numId, paramId]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញអ្នកប្រើប្រាស់ដើម្បីលុបទេ' });
+        }
+        return res.json({ success: true, message: 'បានលុបអ្នកប្រើប្រាស់ជោគជ័យ!' });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.sqlMessage || e.message });
+    }
+});
+
+// ==========================================
 // 2. DASHBOARD OVERVIEW & TRENDS
 // ==========================================
 // Dashboard stats cache (2-second TTL for instant response)
@@ -1793,19 +1878,26 @@ app.put('/api/teachers/:id', async (req, res) => {
 app.delete('/api/teachers/:id', async (req, res) => {
     const paramId = String(req.params.id || '').trim();
     const numId = toNum(paramId, 0);
+    let conn;
     try {
-        await pool.query('DELETE FROM attendance WHERE teacher_id = ? OR teacher_id = ?', [numId, paramId]).catch(() => {});
-        await pool.query('DELETE FROM schedules WHERE teacher_id = ? OR teacher_id = ?', [numId, paramId]).catch(() => {});
-        await pool.query('DELETE FROM teacher_salaries WHERE teacher_id = ? OR teacher_id = ?', [numId, paramId]).catch(() => {});
-        const [result] = await pool.query('DELETE FROM teachers WHERE id = ? OR teacher_code = ?', [numId, paramId]);
+        conn = await pool.getConnection();
+        await conn.query('SET FOREIGN_KEY_CHECKS=0').catch(() => {});
+        await conn.query('DELETE FROM attendance WHERE teacher_id = ? OR teacher_id = ?', [numId, paramId]).catch(() => {});
+        await conn.query('DELETE FROM schedules WHERE teacher_id = ? OR teacher_id = ?', [numId, paramId]).catch(() => {});
+        await conn.query('DELETE FROM teacher_salaries WHERE teacher_id = ? OR teacher_id = ?', [numId, paramId]).catch(() => {});
+        const [result] = await conn.query('DELETE FROM teachers WHERE id = ? OR teacher_code = ?', [numId, paramId]);
+        await conn.query('SET FOREIGN_KEY_CHECKS=1').catch(() => {});
         invalidateMemberCache();
         if (result.affectedRows === 0) {
             return res.status(404).json({ success: false, message: 'រកមិនឃើញទិន្នន័យគ្រូបង្រៀនដើម្បីលុបទេ (ID: ' + paramId + ')' });
         }
         return res.json({ success: true, message: 'លុបទិន្នន័យគ្រូបង្រៀនបានជោគជ័យ!' });
     } catch (e) {
+        if (conn) await conn.query('SET FOREIGN_KEY_CHECKS=1').catch(() => {});
         console.error('DB Error [DELETE /api/teachers/:id]:', e);
         return res.status(500).json({ success: false, message: e.sqlMessage || e.message, error: e.sqlMessage || e.message });
+    } finally {
+        if (conn) conn.release();
     }
 });
 
@@ -1968,20 +2060,27 @@ app.put('/api/students/:id', async (req, res) => {
 app.delete('/api/students/:id', async (req, res) => {
     const paramId = String(req.params.id || '').trim();
     const numId = toNum(paramId, 0);
+    let conn;
     try {
-        await pool.query('DELETE FROM attendance WHERE student_id = ? OR student_id = ?', [numId, paramId]).catch(() => {});
-        await pool.query('DELETE FROM student_grades WHERE student_id = ? OR student_id = ?', [numId, paramId]).catch(() => {});
-        await pool.query('DELETE FROM student_payments WHERE student_id = ? OR student_id = ?', [numId, paramId]).catch(() => {});
-        await pool.query('DELETE FROM invoices WHERE student_id = ? OR student_id = ?', [numId, paramId]).catch(() => {});
-        const [result] = await pool.query('DELETE FROM students WHERE id = ? OR student_code = ?', [numId, paramId]);
+        conn = await pool.getConnection();
+        await conn.query('SET FOREIGN_KEY_CHECKS=0').catch(() => {});
+        await conn.query('DELETE FROM attendance WHERE student_id = ? OR student_id = ?', [numId, paramId]).catch(() => {});
+        await conn.query('DELETE FROM student_grades WHERE student_id = ? OR student_id = ?', [numId, paramId]).catch(() => {});
+        await conn.query('DELETE FROM student_payments WHERE student_id = ? OR student_id = ?', [numId, paramId]).catch(() => {});
+        await conn.query('DELETE FROM invoices WHERE student_id = ? OR student_id = ?', [numId, paramId]).catch(() => {});
+        const [result] = await conn.query('DELETE FROM students WHERE id = ? OR student_code = ?', [numId, paramId]);
+        await conn.query('SET FOREIGN_KEY_CHECKS=1').catch(() => {});
         invalidateMemberCache();
         if (result.affectedRows === 0) {
             return res.status(404).json({ success: false, message: 'រកមិនឃើញទិន្នន័យសិស្សដើម្បីលុបទេ (ID: ' + paramId + ')' });
         }
         return res.json({ success: true, message: 'លុបទិន្នន័យសិស្សបានជោគជ័យ!' });
     } catch (e) {
+        if (conn) await conn.query('SET FOREIGN_KEY_CHECKS=1').catch(() => {});
         console.error('DB Error [DELETE /api/students/:id]:', e);
         return res.status(500).json({ success: false, message: e.sqlMessage || e.message, error: e.sqlMessage || e.message });
+    } finally {
+        if (conn) conn.release();
     }
 });
 
@@ -2234,19 +2333,26 @@ app.put(['/api/classrooms/:id', '/classrooms/:id'], async (req, res) => {
 app.delete(['/api/classrooms/:id', '/classrooms/:id'], async (req, res) => {
     const paramId = String(req.params.id || '').trim();
     const numId = toNum(paramId, 0);
+    let conn;
     try {
-        await pool.query('UPDATE students SET classroom_id = NULL WHERE classroom_id = ?', [numId]).catch(() => {});
-        await pool.query('DELETE FROM attendance WHERE classroom_id = ?', [numId]).catch(() => {});
-        await pool.query('DELETE FROM schedules WHERE classroom_id = ?', [numId]).catch(() => {});
-        await pool.query('DELETE FROM student_grades WHERE classroom_id = ?', [numId]).catch(() => {});
-        const [result] = await pool.query('DELETE FROM classrooms WHERE id = ? OR room_number = ?', [numId, paramId]);
+        conn = await pool.getConnection();
+        await conn.query('SET FOREIGN_KEY_CHECKS=0').catch(() => {});
+        await conn.query('UPDATE students SET classroom_id = NULL WHERE classroom_id = ?', [numId]).catch(() => {});
+        await conn.query('DELETE FROM attendance WHERE classroom_id = ?', [numId]).catch(() => {});
+        await conn.query('DELETE FROM schedules WHERE classroom_id = ?', [numId]).catch(() => {});
+        await conn.query('DELETE FROM student_grades WHERE classroom_id = ?', [numId]).catch(() => {});
+        const [result] = await conn.query('DELETE FROM classrooms WHERE id = ? OR room_number = ?', [numId, paramId]);
+        await conn.query('SET FOREIGN_KEY_CHECKS=1').catch(() => {});
         if (result.affectedRows === 0) {
             return res.status(404).json({ success: false, message: 'រកមិនឃើញបន្ទប់រៀនដើម្បីលុបទេ (ID: ' + paramId + ')' });
         }
         return res.json({ success: true, message: 'លុបបន្ទប់រៀនបានជោគជ័យ!' });
     } catch (e) {
+        if (conn) await conn.query('SET FOREIGN_KEY_CHECKS=1').catch(() => {});
         console.error('DB Error [DELETE /api/classrooms/:id]:', e);
         return res.status(500).json({ success: false, message: e.sqlMessage || e.message, error: e.sqlMessage || e.message });
+    } finally {
+        if (conn) conn.release();
     }
 });
 
