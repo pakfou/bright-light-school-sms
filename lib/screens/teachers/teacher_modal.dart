@@ -161,22 +161,10 @@ class _TeacherModalState extends State<TeacherModal> {
           : _photoUrlCtrl.text.trim(),
     };
 
-    if (ApiConfig.isDemoMode) {
-      if (!mounted) return;
-      Navigator.pop(context);
-      widget.onSaved();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('បានរក្សាទុកទិន្នន័យគ្រូជោគជ័យ! (Demo Mode)'),
-          backgroundColor: Color(0xFF16A34A),
-        ),
-      );
-      return;
-    }
-
     try {
+      final teacherId = widget.teacher != null ? (widget.teacher!['id'] ?? widget.teacher!['teacher_code']) : null;
       final url = widget.teacher != null
-          ? '$baseUrl/teachers/${widget.teacher!['id']}'
+          ? '$baseUrl/teachers/$teacherId'
           : '$baseUrl/teachers';
       final method = widget.teacher != null ? http.put : http.post;
 

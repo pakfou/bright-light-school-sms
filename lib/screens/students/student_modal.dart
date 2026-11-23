@@ -199,22 +199,10 @@ class _StudentModalState extends State<StudentModal> {
           : _photoUrlCtrl.text.trim(),
     };
 
-    if (ApiConfig.isDemoMode) {
-      if (!mounted) return;
-      Navigator.pop(context);
-      widget.onSaved();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('បានរក្សាទុកទិន្នន័យសិស្សជោគជ័យ! (Demo Mode)'),
-          backgroundColor: Color(0xFF16A34A),
-        ),
-      );
-      return;
-    }
-
     try {
+      final studentId = widget.student != null ? (widget.student!['id'] ?? widget.student!['student_code']) : null;
       final url = widget.student != null
-          ? '$baseUrl/students/${widget.student!['id']}'
+          ? '$baseUrl/students/$studentId'
           : '$baseUrl/students';
       final method = widget.student != null ? http.put : http.post;
 

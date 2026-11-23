@@ -855,16 +855,42 @@ class _FinanceManagerViewState extends State<FinanceManagerView>
   Future<void> _deletePayment(int id) async {
     final ok = await _confirmDelete('ការបង់ប្រាក់');
     if (ok == true) {
-      await http.delete(Uri.parse('$baseUrl/payments/students/$id'));
-      _loadAll();
+      try {
+        final res = await http.delete(
+          Uri.parse('$baseUrl/payments/$id'),
+          headers: {'Accept': 'application/json'},
+        ).timeout(const Duration(seconds: 30));
+        final data = jsonDecode(utf8.decode(res.bodyBytes));
+        if (res.statusCode == 200 && data['success'] == true) {
+          _loadAll();
+          _showSnackbar(data['message'] ?? 'បានលុបការបង់ប្រាក់ជោគជ័យ!', const Color(0xFF10B981));
+        } else {
+          _showSnackbar(data['message'] ?? data['error'] ?? 'បរាជ័យក្នុងការលុប', const Color(0xFFEF4444));
+        }
+      } catch (e) {
+        _showSnackbar('កំហុសបណ្តាញ: $e', const Color(0xFFEF4444));
+      }
     }
   }
 
   Future<void> _deleteSalary(int id) async {
     final ok = await _confirmDelete('ប្រាក់បៀវត្សរ៍');
     if (ok == true) {
-      await http.delete(Uri.parse('$baseUrl/payments/teacher-salaries/$id'));
-      _loadAll();
+      try {
+        final res = await http.delete(
+          Uri.parse('$baseUrl/payments/teacher-salaries/$id'),
+          headers: {'Accept': 'application/json'},
+        ).timeout(const Duration(seconds: 30));
+        final data = jsonDecode(utf8.decode(res.bodyBytes));
+        if (res.statusCode == 200 && data['success'] == true) {
+          _loadAll();
+          _showSnackbar(data['message'] ?? 'បានលុបកំណត់ត្រាបៀវត្សរ៍ជោគជ័យ!', const Color(0xFF10B981));
+        } else {
+          _showSnackbar(data['message'] ?? data['error'] ?? 'បរាជ័យក្នុងការលុប', const Color(0xFFEF4444));
+        }
+      } catch (e) {
+        _showSnackbar('កំហុសបណ្តាញ: $e', const Color(0xFFEF4444));
+      }
     }
   }
 

@@ -1580,6 +1580,61 @@ app.get(['/api/attendance/classroom/:id', '/attendance/classroom/:id'], async (r
     } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
 });
 
+app.get(['/api/attendance/:id', '/attendance/:id'], async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            `SELECT a.*, 
+                    DATE_FORMAT(a.date, '%Y-%m-%d') AS date,
+                    COALESCE(s.name_kh, t.name_kh) as name_kh,
+                    COALESCE(s.name_en, t.name_en) as name_en,
+                    c.class_name
+             FROM attendance a 
+             LEFT JOIN students s ON a.student_id = s.id 
+             LEFT JOIN teachers t ON a.teacher_id = t.id 
+             LEFT JOIN classrooms c ON a.classroom_id = c.id 
+             WHERE a.id = ? LIMIT 1`,
+            [req.params.id]
+        );
+        if (!rows || rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញទិន្នន័យវត្តមានទេ (ID: ' + req.params.id + ')' });
+        }
+        return res.json({ success: true, data: rows[0] });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.sqlMessage || e.message });
+    }
+});
+
+app.put(['/api/attendance/:id', '/attendance/:id'], async (req, res) => {
+    const id = toNum(req.params.id, 0);
+    if (!id) return res.status(400).json({ success: false, message: 'Attendance ID មិនត្រឹមត្រូវ!' });
+    const { status, shift } = req.body;
+    try {
+        const [result] = await pool.query(
+            `UPDATE attendance SET 
+                status = COALESCE(?, status), 
+                shift = COALESCE(?, shift)
+             WHERE id = ?`,
+            [toNull(status), toNull(shift), id]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញទិន្នន័យវត្តមានសម្រាប់កែប្រែទេ (ID: ' + id + ')' });
+        }
+        return res.json({ success: true, message: 'កែប្រែវត្តមានបានជោគជ័យ!' });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message });
+    }
+});
+
+app.delete(['/api/attendance/:id', '/attendance/:id'], async (req, res) => {
+    try {
+        const [result] = await pool.query('DELETE FROM attendance WHERE id = ?', [req.params.id]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញកំណត់ត្រាវត្តមានដើម្បីលុបទេ (ID: ' + req.params.id + ')' });
+        }
+        return res.json({ success: true, message: 'លុបកំណត់ត្រាវត្តមានបានជោគជ័យ!' });
+    } catch (e) { return res.status(500).json({ success: false, message: e.sqlMessage || e.message }); }
+});
+
 
 // ==========================================
 // 4. TEACHERS FULL CRUD
@@ -1638,16 +1693,51 @@ app.post('/api/teachers', async (req, res) => {
     }
 });
 
+app.get('/api/teachers/:id', async (req, res) => {
+    try {
+        const paramId = String(req.params.id || '').trim();
+        const numId = toNum(paramId, 0);
+        const [rows] = await pool.query(`
+            SELECT id, teacher_code, name_kh, name_en, gender, 
+                   DATE_FORMAT(dob, '%Y-%m-%d') AS dob, phone, email, 
+                   role_title, specialized_subject, base_salary, status, 
+                   DATE_FORMAT(hire_date, '%Y-%m-%d') AS hire_date, photo_url 
+            FROM teachers 
+            WHERE id = ? OR teacher_code = ?
+            LIMIT 1
+        `, [numId, paramId]);
+        if (!rows || rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញទិន្នន័យគ្រូបង្រៀនទេ (ID: ' + paramId + ')' });
+        }
+        return res.json({ success: true, data: rows[0] });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.sqlMessage || e.message });
+    }
+});
+
 app.put('/api/teachers/:id', async (req, res) => {
-    const id = toNum(req.params.id, 0);
-    if (!id) return res.status(400).json({ success: false, message: 'Teacher ID មិនត្រឹមត្រូវ!', error: 'Teacher ID មិនត្រឹមត្រូវ!' });
-    const { name_kh, name_en, gender, dob, phone, email, role_title, specialized_subject, base_salary, status, hire_date, photo_url } = req.body;
+    const paramId = String(req.params.id || '').trim();
+    const numId = toNum(paramId, 0);
+    const teacher_code = req.body.teacher_code ?? req.body.teacherCode;
+    const name_kh = req.body.name_kh ?? req.body.nameKh ?? req.body.nameKhmer;
+    const name_en = req.body.name_en ?? req.body.nameEn ?? req.body.fullName;
+    const gender = req.body.gender;
+    const dob = req.body.dob ?? req.body.dateOfBirth;
+    const phone = req.body.phone ?? req.body.phoneNumber;
+    const email = req.body.email;
+    const role_title = req.body.role_title ?? req.body.roleTitle;
+    const specialized_subject = req.body.specialized_subject ?? req.body.specializedSubject ?? req.body.subject;
+    const base_salary = req.body.base_salary ?? req.body.baseSalary ?? req.body.salary;
+    const status = req.body.status;
+    const hire_date = req.body.hire_date ?? req.body.hireDate;
+    const photo_url = req.body.photo_url ?? req.body.photoUrl;
+
     try {
         const safeNameKh = toNull(name_kh);
         if (!safeNameKh) {
             return res.status(400).json({ success: false, message: 'ឈ្មោះគ្រូជាភាសាខ្មែរត្រូវតែបំពេញ', error: 'ឈ្មោះគ្រូជាភាសាខ្មែរត្រូវតែបំពេញ' });
         }
-        await pool.query(
+        const [result] = await pool.query(
             `UPDATE teachers SET 
                 name_kh = ?, 
                 name_en = ?, 
@@ -1660,8 +1750,9 @@ app.put('/api/teachers/:id', async (req, res) => {
                 base_salary = ?, 
                 status = COALESCE(?, status), 
                 hire_date = ?, 
-                photo_url = ? 
-             WHERE id = ?`,
+                photo_url = COALESCE(?, photo_url),
+                teacher_code = COALESCE(?, teacher_code)
+             WHERE id = ? OR teacher_code = ?`,
             [
                 safeNameKh,
                 toNull(name_en),
@@ -1675,11 +1766,15 @@ app.put('/api/teachers/:id', async (req, res) => {
                 toNull(status) || 'Active',
                 toDate(hire_date),
                 toNull(photo_url),
-                id
+                toNull(teacher_code),
+                numId, paramId
             ]
         );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញទិន្នន័យគ្រូសម្រាប់កែប្រែក្នុង Database ទេ (ID: ' + paramId + ')' });
+        }
         invalidateMemberCache();
-        return res.json({ success: true, message: 'បានកែប្រែទិន្នន័យគ្រូជោគជ័យ!' });
+        return res.json({ success: true, message: 'កែសម្រួលទិន្នន័យគ្រូក្នុង Database បានជោគជ័យ!' });
     } catch (err) {
         console.error('DB Error [PUT /api/teachers/:id]:', err);
         return res.status(500).json({ success: false, message: err.sqlMessage || err.message, error: err.sqlMessage || err.message });
@@ -1687,14 +1782,22 @@ app.put('/api/teachers/:id', async (req, res) => {
 });
 
 app.delete('/api/teachers/:id', async (req, res) => {
+    const paramId = String(req.params.id || '').trim();
+    const numId = toNum(paramId, 0);
     try {
-        await pool.query('DELETE FROM attendance WHERE teacher_id = ?', [req.params.id]).catch(() => {});
-        await pool.query('DELETE FROM schedules WHERE teacher_id = ?', [req.params.id]).catch(() => {});
-        await pool.query('DELETE FROM teacher_salaries WHERE teacher_id = ?', [req.params.id]).catch(() => {});
-        await pool.query('DELETE FROM teachers WHERE id = ?', [req.params.id]);
+        await pool.query('DELETE FROM attendance WHERE teacher_id = ? OR teacher_id = ?', [numId, paramId]).catch(() => {});
+        await pool.query('DELETE FROM schedules WHERE teacher_id = ? OR teacher_id = ?', [numId, paramId]).catch(() => {});
+        await pool.query('DELETE FROM teacher_salaries WHERE teacher_id = ? OR teacher_id = ?', [numId, paramId]).catch(() => {});
+        const [result] = await pool.query('DELETE FROM teachers WHERE id = ? OR teacher_code = ?', [numId, paramId]);
         invalidateMemberCache();
-        return res.json({ success: true, message: 'បានលុបទិន្នន័យគ្រូជោគជ័យ!' });
-    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញទិន្នន័យគ្រូបង្រៀនដើម្បីលុបទេ (ID: ' + paramId + ')' });
+        }
+        return res.json({ success: true, message: 'លុបទិន្នន័យគ្រូបង្រៀនបានជោគជ័យ!' });
+    } catch (e) {
+        console.error('DB Error [DELETE /api/teachers/:id]:', e);
+        return res.status(500).json({ success: false, message: e.sqlMessage || e.message, error: e.sqlMessage || e.message });
+    }
 });
 
 // ==========================================
@@ -1760,10 +1863,48 @@ app.post('/api/students', async (req, res) => {
     }
 });
 
+app.get(['/api/students/:id', '/students/:id'], async (req, res) => {
+    try {
+        const paramId = String(req.params.id || '').trim();
+        const numId = toNum(paramId, 0);
+        const [rows] = await pool.query(`
+            SELECT s.*, 
+                   DATE_FORMAT(s.dob, '%Y-%m-%d') as dob, 
+                   c.class_name,
+                   COALESCE(c.class_name, g.name, 'ថ្នាក់ទី ១A') AS grade,
+                   COALESCE(g.name, c.class_name, 'បឋមសិក្សា') AS grade_level_name
+            FROM students s 
+            LEFT JOIN classrooms c ON s.classroom_id = c.id 
+            LEFT JOIN grade_levels g ON c.grade_level_id = g.id
+            WHERE s.id = ? OR s.student_code = ?
+            LIMIT 1
+        `, [numId, paramId]);
+        if (!rows || rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញទិន្នន័យសិស្សទេ (ID: ' + paramId + ')' });
+        }
+        return res.json({ success: true, data: rows[0] });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.sqlMessage || e.message });
+    }
+});
+
 app.put('/api/students/:id', async (req, res) => {
-    const id = toNum(req.params.id, 0);
-    if (!id) return res.status(400).json({ success: false, message: 'Student ID មិនត្រឹមត្រូវ!', error: 'Student ID មិនត្រឹមត្រូវ!' });
-    const { name_kh, name_en, gender, dob, pob, parent_name, parent_phone, study_type, shift, part_time_course, classroom_id, photo_url } = req.body;
+    const paramId = String(req.params.id || '').trim();
+    const numId = toNum(paramId, 0);
+    const student_code = req.body.student_code ?? req.body.studentCode;
+    const name_kh = req.body.name_kh ?? req.body.nameKh ?? req.body.nameKhmer;
+    const name_en = req.body.name_en ?? req.body.nameEn ?? req.body.fullName;
+    const gender = req.body.gender;
+    const dob = req.body.dob ?? req.body.dateOfBirth;
+    const pob = req.body.pob ?? req.body.placeOfBirth;
+    const parent_name = req.body.parent_name ?? req.body.parentName;
+    const parent_phone = req.body.parent_phone ?? req.body.parentPhone ?? req.body.phone;
+    const study_type = req.body.study_type ?? req.body.studyType;
+    const shift = req.body.shift;
+    const part_time_course = req.body.part_time_course ?? req.body.partTimeCourse;
+    const classroom_id = req.body.classroom_id ?? req.body.classroomId;
+    const photo_url = req.body.photo_url ?? req.body.photoUrl;
+
     try {
         const safeNameKh = toNull(name_kh);
         if (!safeNameKh) {
@@ -1771,7 +1912,7 @@ app.put('/api/students/:id', async (req, res) => {
         }
         const cId = (classroom_id && toNum(classroom_id, 0) > 0) ? toNum(classroom_id, 0) : null;
         const sType = toNull(study_type) || 'Full-Time';
-        await pool.query(
+        const [result] = await pool.query(
             `UPDATE students SET 
                 name_kh = ?, 
                 name_en = ?, 
@@ -1784,8 +1925,9 @@ app.put('/api/students/:id', async (req, res) => {
                 shift = ?, 
                 part_time_course = ?, 
                 classroom_id = ?, 
-                photo_url = ? 
-             WHERE id = ?`,
+                photo_url = COALESCE(?, photo_url),
+                student_code = COALESCE(?, student_code)
+             WHERE id = ? OR student_code = ?`,
             [
                 safeNameKh,
                 toNull(name_en),
@@ -1799,11 +1941,15 @@ app.put('/api/students/:id', async (req, res) => {
                 sType === 'Part-Time' ? (toNull(part_time_course) || 'None') : 'None',
                 cId,
                 toNull(photo_url),
-                id
+                toNull(student_code),
+                numId, paramId
             ]
         );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញទិន្នន័យសិស្សសម្រាប់កែប្រែក្នុង Database ទេ (ID: ' + paramId + ')' });
+        }
         invalidateMemberCache();
-        return res.json({ success: true, message: 'បានកែប្រែទិន្នន័យសិស្សជោគជ័យ!' });
+        return res.json({ success: true, message: 'កែសម្រួលទិន្នន័យសិស្សក្នុង Database បានជោគជ័យ!' });
     } catch (err) {
         console.error('DB Error [PUT /api/students/:id]:', err);
         return res.status(500).json({ success: false, message: err.sqlMessage || err.message, error: err.sqlMessage || err.message });
@@ -1811,14 +1957,23 @@ app.put('/api/students/:id', async (req, res) => {
 });
 
 app.delete('/api/students/:id', async (req, res) => {
+    const paramId = String(req.params.id || '').trim();
+    const numId = toNum(paramId, 0);
     try {
-        await pool.query('DELETE FROM attendance WHERE student_id = ?', [req.params.id]).catch(() => {});
-        await pool.query('DELETE FROM student_grades WHERE student_id = ?', [req.params.id]).catch(() => {});
-        await pool.query('DELETE FROM student_payments WHERE student_id = ?', [req.params.id]).catch(() => {});
-        await pool.query('DELETE FROM students WHERE id = ?', [req.params.id]);
+        await pool.query('DELETE FROM attendance WHERE student_id = ? OR student_id = ?', [numId, paramId]).catch(() => {});
+        await pool.query('DELETE FROM student_grades WHERE student_id = ? OR student_id = ?', [numId, paramId]).catch(() => {});
+        await pool.query('DELETE FROM student_payments WHERE student_id = ? OR student_id = ?', [numId, paramId]).catch(() => {});
+        await pool.query('DELETE FROM invoices WHERE student_id = ? OR student_id = ?', [numId, paramId]).catch(() => {});
+        const [result] = await pool.query('DELETE FROM students WHERE id = ? OR student_code = ?', [numId, paramId]);
         invalidateMemberCache();
-        return res.json({ success: true, message: 'បានលុបទិន្នន័យសិស្សជោគជ័យ!' });
-    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញទិន្នន័យសិស្សដើម្បីលុបទេ (ID: ' + paramId + ')' });
+        }
+        return res.json({ success: true, message: 'លុបទិន្នន័យសិស្សបានជោគជ័យ!' });
+    } catch (e) {
+        console.error('DB Error [DELETE /api/students/:id]:', e);
+        return res.status(500).json({ success: false, message: e.sqlMessage || e.message, error: e.sqlMessage || e.message });
+    }
 });
 
 // ==========================================
@@ -1996,38 +2151,71 @@ app.post(['/api/classrooms', '/classrooms'], async (req, res) => {
     }
 });
 
+app.get(['/api/classrooms/:id', '/classrooms/:id'], async (req, res) => {
+    try {
+        const paramId = String(req.params.id || '').trim();
+        const numId = toNum(paramId, 0);
+        const [rows] = await pool.query(`
+            SELECT c.*, g.name AS grade_level_name, g.name AS grade_level,
+                   (SELECT COUNT(*) FROM students s WHERE s.classroom_id = c.id) AS students_count
+            FROM classrooms c 
+            LEFT JOIN grade_levels g ON c.grade_level_id = g.id
+            WHERE c.id = ? OR c.room_number = ?
+            LIMIT 1
+        `, [numId, paramId]);
+        if (!rows || rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញបន្ទប់រៀនទេ (ID: ' + paramId + ')' });
+        }
+        return res.json({ success: true, data: rows[0] });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.sqlMessage || e.message });
+    }
+});
+
 app.put(['/api/classrooms/:id', '/classrooms/:id'], async (req, res) => {
-    const id = toNum(req.params.id, 0);
-    if (!id) return res.status(400).json({ success: false, message: 'Classroom ID មិនត្រឹមត្រូវ!', error: 'Classroom ID មិនត្រឹមត្រូវ!' });
-    const { class_name, grade_level_id, level_type, study_type, shift, room_number, capacity, teacher_name, academic_year } = req.body;
+    const paramId = String(req.params.id || '').trim();
+    const numId = toNum(paramId, 0);
+    const class_name = req.body.class_name ?? req.body.className;
+    const grade_level_id = req.body.grade_level_id ?? req.body.gradeLevelId;
+    const level_type = req.body.level_type ?? req.body.levelType;
+    const study_type = req.body.study_type ?? req.body.studyType;
+    const shift = req.body.shift;
+    const room_number = req.body.room_number ?? req.body.roomNumber;
+    const capacity = req.body.capacity;
+    const teacher_name = req.body.teacher_name ?? req.body.teacherName;
+    const academic_year = req.body.academic_year ?? req.body.academicYear;
+
     try {
         const glId = (grade_level_id && toNum(grade_level_id, 0) > 0) ? toNum(grade_level_id, 0) : null;
-        await pool.query(
+        const [result] = await pool.query(
             `UPDATE classrooms SET 
-                class_name = ?, 
+                class_name = COALESCE(?, class_name), 
                 grade_level_id = ?, 
                 level_type = COALESCE(?, level_type),
                 study_type = COALESCE(?, study_type),
-                shift = ?, 
-                room_number = ?, 
-                capacity = ?, 
-                teacher_name = ?, 
-                academic_year = ? 
-             WHERE id = ?`,
+                shift = COALESCE(?, shift), 
+                room_number = COALESCE(?, room_number), 
+                capacity = COALESCE(?, capacity), 
+                teacher_name = COALESCE(?, teacher_name), 
+                academic_year = COALESCE(?, academic_year) 
+             WHERE id = ? OR room_number = ?`,
             [
-                toNull(class_name) || 'ថ្នាក់រៀន',
+                toNull(class_name),
                 glId,
                 toNull(level_type),
                 toNull(study_type),
-                toNull(shift) || 'Morning',
-                toNull(room_number) || 'Room-01',
-                toNum(capacity, 30),
-                toNull(teacher_name) || '',
-                toNull(academic_year) || '2025-2026',
-                id
+                toNull(shift),
+                toNull(room_number),
+                capacity !== undefined ? toNum(capacity, 30) : null,
+                toNull(teacher_name),
+                toNull(academic_year),
+                numId, paramId
             ]
         );
-        return res.json({ success: true, message: 'បានកែប្រែបន្ទប់រៀនជោគជ័យ!' });
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញបន្ទប់រៀនសម្រាប់កែប្រែក្នុង Database ទេ (ID: ' + paramId + ')' });
+        }
+        return res.json({ success: true, message: 'កែសម្រួលទិន្នន័យបន្ទប់រៀនក្នុង Database បានជោគជ័យ!' });
     } catch (err) {
         console.error('DB Error [PUT /api/classrooms/:id]:', err);
         return res.status(500).json({ success: false, message: err.sqlMessage || err.message, error: err.sqlMessage || err.message });
@@ -2035,13 +2223,22 @@ app.put(['/api/classrooms/:id', '/classrooms/:id'], async (req, res) => {
 });
 
 app.delete(['/api/classrooms/:id', '/classrooms/:id'], async (req, res) => {
+    const paramId = String(req.params.id || '').trim();
+    const numId = toNum(paramId, 0);
     try {
-        await pool.query('UPDATE students SET classroom_id = NULL WHERE classroom_id = ?', [req.params.id]).catch(() => {});
-        await pool.query('DELETE FROM attendance WHERE classroom_id = ?', [req.params.id]).catch(() => {});
-        await pool.query('DELETE FROM schedules WHERE classroom_id = ?', [req.params.id]).catch(() => {});
-        await pool.query('DELETE FROM classrooms WHERE id = ?', [req.params.id]);
-        return res.json({ success: true, message: 'បានលុបបន្ទប់រៀនជោគជ័យ!' });
-    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+        await pool.query('UPDATE students SET classroom_id = NULL WHERE classroom_id = ?', [numId]).catch(() => {});
+        await pool.query('DELETE FROM attendance WHERE classroom_id = ?', [numId]).catch(() => {});
+        await pool.query('DELETE FROM schedules WHERE classroom_id = ?', [numId]).catch(() => {});
+        await pool.query('DELETE FROM student_grades WHERE classroom_id = ?', [numId]).catch(() => {});
+        const [result] = await pool.query('DELETE FROM classrooms WHERE id = ? OR room_number = ?', [numId, paramId]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញបន្ទប់រៀនដើម្បីលុបទេ (ID: ' + paramId + ')' });
+        }
+        return res.json({ success: true, message: 'លុបបន្ទប់រៀនបានជោគជ័យ!' });
+    } catch (e) {
+        console.error('DB Error [DELETE /api/classrooms/:id]:', e);
+        return res.status(500).json({ success: false, message: e.sqlMessage || e.message, error: e.sqlMessage || e.message });
+    }
 });
 
 // ==========================================
@@ -2168,15 +2365,41 @@ app.post('/api/schedules', async (req, res) => {
     }
 });
 
+app.get('/api/schedules/:id', async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            `SELECT s.*, c.class_name, t.name_kh as teacher_name 
+             FROM schedules s 
+             LEFT JOIN classrooms c ON s.classroom_id = c.id 
+             LEFT JOIN teachers t ON s.teacher_id = t.id 
+             WHERE s.id = ? LIMIT 1`,
+            [req.params.id]
+        );
+        if (!rows || rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញកាលវិភាគទេ (ID: ' + req.params.id + ')' });
+        }
+        return res.json({ success: true, data: rows[0] });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.sqlMessage || e.message });
+    }
+});
+
 app.put('/api/schedules/:id', async (req, res) => {
     const id = toNum(req.params.id, 0);
     if (!id) return res.status(400).json({ success: false, message: 'Schedule ID មិនត្រឹមត្រូវ!', error: 'Schedule ID មិនត្រឹមត្រូវ!' });
-    const { classroom_id, teacher_id, subject_name, day_of_week, start_time, end_time, shift } = req.body;
+    const classroom_id = req.body.classroom_id ?? req.body.classroomId;
+    const teacher_id = req.body.teacher_id ?? req.body.teacherId;
+    const subject_name = req.body.subject_name ?? req.body.subjectName ?? req.body.subject;
+    const day_of_week = req.body.day_of_week ?? req.body.dayOfWeek;
+    const start_time = req.body.start_time ?? req.body.startTime;
+    const end_time = req.body.end_time ?? req.body.endTime;
+    const shift = req.body.shift;
+
     try {
         const cId = (classroom_id && toNum(classroom_id, 0) > 0) ? toNum(classroom_id, 0) : null;
         const tId = (teacher_id && toNum(teacher_id, 0) > 0) ? toNum(teacher_id, 0) : null;
         const subj = toNull(subject_name) || 'ចំណេះដឹងទូទៅ';
-        await pool.query(
+        const [result] = await pool.query(
             `UPDATE schedules SET 
                 classroom_id = ?, 
                 teacher_id = ?, 
@@ -2199,6 +2422,9 @@ app.put('/api/schedules/:id', async (req, res) => {
                 id
             ]
         );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញកាលវិភាគសម្រាប់កែប្រែទេ (ID: ' + id + ')' });
+        }
         return res.json({ success: true, message: 'បានកែប្រែកាលវិភាគជោគជ័យ!' });
     } catch (err) {
         console.error('DB Error [PUT /api/schedules/:id]:', err);
@@ -2208,7 +2434,10 @@ app.put('/api/schedules/:id', async (req, res) => {
 
 app.delete('/api/schedules/:id', async (req, res) => {
     try {
-        await pool.query('DELETE FROM schedules WHERE id = ?', [req.params.id]);
+        const [result] = await pool.query('DELETE FROM schedules WHERE id = ?', [req.params.id]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញកាលវិភាគដើម្បីលុបទេ (ID: ' + req.params.id + ')' });
+        }
         return res.json({ success: true, message: 'បានលុបកាលវិភាគជោគជ័យ!' });
     } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
 });
@@ -2341,11 +2570,64 @@ app.post('/api/grades/batch', async (req, res) => {
     }
 });
 
+app.get('/api/grades/detail/:id', async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            `SELECT g.*, s.student_code, s.name_kh, s.name_en, c.class_name 
+             FROM student_grades g 
+             JOIN students s ON g.student_id = s.id 
+             LEFT JOIN classrooms c ON g.classroom_id = c.id 
+             WHERE g.id = ? LIMIT 1`,
+            [req.params.id]
+        );
+        if (!rows || rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញកំណត់ត្រាពិន្ទុទេ (ID: ' + req.params.id + ')' });
+        }
+        return res.json({ success: true, data: rows[0] });
+    } catch (e) {
+        return res.status(500).json({ success: false, message: e.sqlMessage || e.message });
+    }
+});
+
+app.put('/api/grades/:id', async (req, res) => {
+    const id = toNum(req.params.id, 0);
+    if (!id) return res.status(400).json({ success: false, message: 'Grade ID មិនត្រឹមត្រូវ!' });
+    const score = req.body.score;
+    const remarks = req.body.remarks;
+    const subject_name = req.body.subject_name ?? req.body.subjectName ?? req.body.subject;
+    const month_name = req.body.month_name ?? req.body.monthName ?? req.body.month;
+    const grade_letter = req.body.grade_letter ?? req.body.gradeLetter;
+
+    try {
+        const numScore = toNum(score, 0);
+        const letter = grade_letter || (numScore >= 85 ? 'A' : (numScore >= 70 ? 'B' : (numScore >= 50 ? 'C' : 'F')));
+        const [result] = await pool.query(
+            `UPDATE student_grades SET 
+                score = ?, 
+                grade_letter = ?, 
+                remarks = COALESCE(?, remarks),
+                subject_name = COALESCE(?, subject_name),
+                month_name = COALESCE(?, month_name)
+             WHERE id = ?`,
+            [numScore, letter, toNull(remarks), toNull(subject_name), toNull(month_name), id]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញពិន្ទុសម្រាប់កែប្រែទេ (ID: ' + id + ')' });
+        }
+        return res.json({ success: true, message: 'កែសម្រួលពិន្ទុបានជោគជ័យ!' });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message });
+    }
+});
+
 app.delete('/api/grades/:id', async (req, res) => {
     try {
-        await pool.query('DELETE FROM student_grades WHERE id = ?', [req.params.id]);
+        const [result] = await pool.query('DELETE FROM student_grades WHERE id = ?', [req.params.id]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញកំណត់ត្រាពិន្ទុដើម្បីលុបទេ (ID: ' + req.params.id + ')' });
+        }
         return res.json({ success: true, message: 'បានលុបកំណត់ត្រាពិន្ទុជោគជ័យ!' });
-    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+    } catch (e) { return res.status(500).json({ success: false, message: e.sqlMessage || e.message }); }
 });
 
 // ==========================================
@@ -3363,9 +3645,59 @@ const handleStudentPaymentPost = async (req, res) => {
 
 app.get(['/api/payments', '/payments', '/api/payments/students', '/payments/students', '/api/finance/student-payments', '/finance/student-payments'], handleStudentPaymentGet);
 app.post(['/api/payments', '/payments', '/api/payments/students', '/payments/students', '/api/finance/student-payments', '/finance/student-payments'], handleStudentPaymentPost);
+app.get(['/api/payments/:id', '/payments/:id', '/api/finance/student-payments/:id'], async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT p.*,
+                   DATE_FORMAT(COALESCE(p.paid_date, p.payment_date, CURRENT_DATE()), '%Y-%m-%d') AS payment_date,
+                   DATE_FORMAT(COALESCE(p.paid_date, p.payment_date, CURRENT_DATE()), '%Y-%m-%d') AS paid_date,
+                   s.student_code,
+                   s.name_kh AS student_name,
+                   s.name_kh,
+                   s.name_en,
+                   c.class_name
+            FROM student_payments p
+            LEFT JOIN students s ON p.student_id = s.id
+            LEFT JOIN classrooms c ON s.classroom_id = c.id
+            WHERE p.id = ? LIMIT 1
+        `, [req.params.id]);
+        if (!rows || rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញកំណត់ត្រាបង់ប្រាក់ទេ (ID: ' + req.params.id + ')' });
+        }
+        return res.json({ success: true, data: rows[0] });
+    } catch (e) { return res.status(500).json({ success: false, message: e.sqlMessage || e.message }); }
+});
+
+app.put(['/api/payments/:id', '/payments/:id', '/api/finance/student-payments/:id'], async (req, res) => {
+    const id = toNum(req.params.id, 0);
+    if (!id) return res.status(400).json({ success: false, message: 'Payment ID មិនត្រឹមត្រូវ!' });
+    const { amount, payment_method, note, status, paid_date } = req.body;
+    try {
+        const [result] = await pool.query(
+            `UPDATE student_payments SET 
+                amount = COALESCE(?, amount), 
+                payment_method = COALESCE(?, payment_method),
+                note = COALESCE(?, note),
+                status = COALESCE(?, status),
+                paid_date = COALESCE(?, paid_date)
+             WHERE id = ?`,
+            [amount !== undefined ? toNum(amount, 0) : null, toNull(payment_method), toNull(note), toNull(status), toDate(paid_date), id]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញការបង់ប្រាក់សម្រាប់កែប្រែទេ (ID: ' + id + ')' });
+        }
+        return res.json({ success: true, message: 'កែប្រែការបង់ប្រាក់បានជោគជ័យ!' });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message });
+    }
+});
+
 app.delete(['/api/payments/:id', '/payments/:id', '/api/payments/students/:id', '/payments/students/:id'], async (req, res) => {
     try {
-        await pool.query('DELETE FROM student_payments WHERE id = ?', [req.params.id]);
+        const [result] = await pool.query('DELETE FROM student_payments WHERE id = ?', [req.params.id]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញកំណត់ត្រាបង់ប្រាក់ដើម្បីលុបទេ (ID: ' + req.params.id + ')' });
+        }
         return res.json({ success: true, message: 'បានលុបកំណត់ត្រាបង់ប្រាក់ជោគជ័យ!' });
     } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
 });
@@ -3485,9 +3817,70 @@ const handleTeacherSalaryPost = async (req, res) => {
 
 app.get(['/api/payments/teacher-salaries', '/payments/teacher-salaries', '/api/finance/teacher-salaries', '/finance/teacher-salaries'], handleTeacherSalaryGet);
 app.post(['/api/payments/teacher-salaries', '/payments/teacher-salaries', '/api/finance/teacher-salaries', '/finance/teacher-salaries'], handleTeacherSalaryPost);
+app.get(['/api/payments/teacher-salaries/:id', '/payments/teacher-salaries/:id', '/api/finance/teacher-salaries/:id'], async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT ts.*,
+                   DATE_FORMAT(COALESCE(ts.paid_date, CURRENT_DATE()), '%Y-%m-%d') AS payment_date,
+                   DATE_FORMAT(COALESCE(ts.paid_date, CURRENT_DATE()), '%Y-%m-%d') AS paid_date,
+                   COALESCE(ts.salary_month, 'ប្រចាំខែ') AS for_month,
+                   COALESCE(ts.net_salary, ts.base_salary, 0.00) AS amount,
+                   t.teacher_code,
+                   t.name_kh AS teacher_name,
+                   t.name_kh,
+                   t.name_en
+            FROM teacher_salaries ts
+            LEFT JOIN teachers t ON ts.teacher_id = t.id
+            WHERE ts.id = ? LIMIT 1
+        `, [req.params.id]);
+        if (!rows || rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញកំណត់ត្រាបៀវត្សរ៍ទេ (ID: ' + req.params.id + ')' });
+        }
+        return res.json({ success: true, data: rows[0] });
+    } catch (e) { return res.status(500).json({ success: false, message: e.sqlMessage || e.message }); }
+});
+
+app.put(['/api/payments/teacher-salaries/:id', '/payments/teacher-salaries/:id', '/api/finance/teacher-salaries/:id'], async (req, res) => {
+    const id = toNum(req.params.id, 0);
+    if (!id) return res.status(400).json({ success: false, message: 'Salary ID មិនត្រឹមត្រូវ!' });
+    const { base_salary, bonus, deductions, net_salary, salary_month, status, paid_date } = req.body;
+    try {
+        const [result] = await pool.query(
+            `UPDATE teacher_salaries SET 
+                base_salary = COALESCE(?, base_salary),
+                bonus = COALESCE(?, bonus),
+                deductions = COALESCE(?, deductions),
+                net_salary = COALESCE(?, net_salary),
+                salary_month = COALESCE(?, salary_month),
+                status = COALESCE(?, status),
+                paid_date = COALESCE(?, paid_date)
+             WHERE id = ?`,
+            [
+                base_salary !== undefined ? toNum(base_salary, 0) : null,
+                bonus !== undefined ? toNum(bonus, 0) : null,
+                deductions !== undefined ? toNum(deductions, 0) : null,
+                net_salary !== undefined ? toNum(net_salary, 0) : null,
+                toNull(salary_month),
+                toNull(status),
+                toDate(paid_date),
+                id
+            ]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញកំណត់ត្រាបៀវត្សរ៍សម្រាប់កែប្រែទេ (ID: ' + id + ')' });
+        }
+        return res.json({ success: true, message: 'កែប្រែកំណត់ត្រាបៀវត្សរ៍បានជោគជ័យ!' });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message });
+    }
+});
+
 app.delete(['/api/payments/teacher-salaries/:id', '/payments/teacher-salaries/:id'], async (req, res) => {
     try {
-        await pool.query('DELETE FROM teacher_salaries WHERE id = ?', [req.params.id]);
+        const [result] = await pool.query('DELETE FROM teacher_salaries WHERE id = ?', [req.params.id]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'រកមិនឃើញកំណត់ត្រាបៀវត្សរ៍ដើម្បីលុបទេ (ID: ' + req.params.id + ')' });
+        }
         return res.json({ success: true, message: 'បានលុបកំណត់ត្រាបៀវត្សរ៍ជោគជ័យ!' });
     } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
 });

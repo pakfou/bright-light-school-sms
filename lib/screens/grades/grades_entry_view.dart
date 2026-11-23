@@ -280,7 +280,10 @@ class _GradesEntryViewState extends State<GradesEntryView> {
     }
 
     try {
-      final sRes = await http.get(Uri.parse('$baseUrl/students')).timeout(const Duration(seconds: 4));
+      final sRes = await http.get(
+        Uri.parse('$baseUrl/students?_t=${DateTime.now().millisecondsSinceEpoch}'),
+        headers: {'Cache-Control': 'no-cache'},
+      ).timeout(const Duration(seconds: 30));
       if (sRes.statusCode == 200) {
         final data = jsonDecode(utf8.decode(sRes.bodyBytes))['data'];
         if (data != null && data is List) {
@@ -294,11 +297,14 @@ class _GradesEntryViewState extends State<GradesEntryView> {
         }
       }
     } catch (e) {
-      ApiConfig.isDemoMode = true;
+      debugPrint('Failed loading students for grades: $e');
     }
 
     try {
-      final cRes = await http.get(Uri.parse('$baseUrl/classrooms')).timeout(const Duration(seconds: 4));
+      final cRes = await http.get(
+        Uri.parse('$baseUrl/classrooms?_t=${DateTime.now().millisecondsSinceEpoch}'),
+        headers: {'Cache-Control': 'no-cache'},
+      ).timeout(const Duration(seconds: 30));
       if (cRes.statusCode == 200) {
         final data = jsonDecode(utf8.decode(cRes.bodyBytes))['data'];
         if (data != null && data is List) {
@@ -306,11 +312,14 @@ class _GradesEntryViewState extends State<GradesEntryView> {
         }
       }
     } catch (e) {
-      ApiConfig.isDemoMode = true;
+      debugPrint('Failed loading classrooms for grades: $e');
     }
 
     try {
-      final gRes = await http.get(Uri.parse('$baseUrl/grades')).timeout(const Duration(seconds: 4));
+      final gRes = await http.get(
+        Uri.parse('$baseUrl/grades?_t=${DateTime.now().millisecondsSinceEpoch}'),
+        headers: {'Cache-Control': 'no-cache'},
+      ).timeout(const Duration(seconds: 30));
       if (gRes.statusCode == 200) {
         final gData = jsonDecode(utf8.decode(gRes.bodyBytes))['data'];
         if (gData != null && gData is List) {

@@ -200,51 +200,72 @@ class _TeachersManagerViewState extends State<TeachersManagerView> {
       ),
     );
     if (ok == true) {
-      if (ApiConfig.isDemoMode) {
-        setState(() {
-          _teachers.removeWhere((t) => t['id'] == id);
-        });
+      try {
+        final res = await http.delete(
+          Uri.parse('$baseUrl/teachers/$id'),
+          headers: {'Accept': 'application/json'},
+        ).timeout(const Duration(seconds: 30));
+        final data = jsonDecode(utf8.decode(res.bodyBytes));
+        if (res.statusCode == 200 && data['success'] == true) {
+          await _fetchTeachers();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(Icons.check_circle, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Text(
+                      data['message'] ?? 'លុបទិន្នន័យគ្រូបានជោគជ័យ!',
+                      style: const TextStyle(fontFamily: 'Khmer OS Battambang'),
+                    ),
+                  ],
+                ),
+                backgroundColor: const Color(0xFF10B981),
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        data['message'] ?? data['error'] ?? 'បរាជ័យក្នុងការលុបទិន្នន័យគ្រូ',
+                        style: const TextStyle(fontFamily: 'Khmer OS Battambang'),
+                      ),
+                    ),
+                  ],
+                ),
+                backgroundColor: const Color(0xFFEF4444),
+              ),
+            );
+          }
+        }
+      } catch (err) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('បានលុបជោគជ័យ! (Demo Mode)'),
-              backgroundColor: Color(0xFF10B981),
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.error_outline, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'កំហុសបណ្តាញ: $err',
+                      style: const TextStyle(fontFamily: 'Khmer OS Battambang'),
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: const Color(0xFFEF4444),
             ),
           );
         }
-        return;
-      }
-      try {
-        final res = await http.delete(Uri.parse('$baseUrl/teachers/$id')).timeout(const Duration(seconds: 4));
-        if (res.statusCode == 200) {
-          _fetchTeachers();
-        } else {
-          setState(() => _teachers.removeWhere((t) => t['id'] == id));
-        }
-      } catch (_) {
-        ApiConfig.isDemoMode = true;
-        setState(() => _teachers.removeWhere((t) => t['id'] == id));
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.white),
-                SizedBox(width: 8),
-                Text(
-                  'បានលុបជោគជ័យ!',
-                  style: TextStyle(fontFamily: 'Khmer OS Battambang'),
-                ),
-              ],
-            ),
-            backgroundColor: const Color(0xFF10B981),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        );
       }
     }
   }

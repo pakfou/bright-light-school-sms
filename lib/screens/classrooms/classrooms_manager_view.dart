@@ -1438,16 +1438,84 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
   Future<void> _deleteLevel(int id, String name) async {
     final ok = await _confirmDelete(name);
     if (ok == true) {
-      await http.delete(Uri.parse('$baseUrl/grade-levels/$id'));
-      _loadAll();
+      try {
+        final res = await http.delete(
+          Uri.parse('$baseUrl/grade-levels/$id'),
+          headers: {'Accept': 'application/json'},
+        ).timeout(const Duration(seconds: 30));
+        final data = jsonDecode(utf8.decode(res.bodyBytes));
+        if (res.statusCode == 200 && data['success'] == true) {
+          _loadAll();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(data['message'] ?? 'លុបកម្រិតថ្នាក់បានជោគជ័យ!'),
+                backgroundColor: const Color(0xFF10B981),
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(data['message'] ?? data['error'] ?? 'បរាជ័យក្នុងការលុប'),
+                backgroundColor: const Color(0xFFEF4444),
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('កំហុសបណ្តាញ: $e'),
+              backgroundColor: const Color(0xFFEF4444),
+            ),
+          );
+        }
+      }
     }
   }
 
   Future<void> _deleteClass(int id, String name) async {
     final ok = await _confirmDelete(name);
     if (ok == true) {
-      await http.delete(Uri.parse('$baseUrl/classrooms/$id'));
-      _loadAll();
+      try {
+        final res = await http.delete(
+          Uri.parse('$baseUrl/classrooms/$id'),
+          headers: {'Accept': 'application/json'},
+        ).timeout(const Duration(seconds: 30));
+        final data = jsonDecode(utf8.decode(res.bodyBytes));
+        if (res.statusCode == 200 && data['success'] == true) {
+          _loadAll();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(data['message'] ?? 'លុបបន្ទប់រៀនបានជោគជ័យ!'),
+                backgroundColor: const Color(0xFF10B981),
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(data['message'] ?? data['error'] ?? 'បរាជ័យក្នុងការលុបបន្ទប់រៀន'),
+                backgroundColor: const Color(0xFFEF4444),
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('កំហុសបណ្តាញ: $e'),
+              backgroundColor: const Color(0xFFEF4444),
+            ),
+          );
+        }
+      }
     }
   }
 
