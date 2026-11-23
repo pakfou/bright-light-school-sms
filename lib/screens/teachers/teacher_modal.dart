@@ -194,28 +194,54 @@ class _TeacherModalState extends State<TeacherModal> {
         widget.onSaved();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(data['message'] ?? 'បានរក្សាទុកជោគជ័យ!'),
+            content: Row(
+              children: [
+                const Icon(
+                  Icons.check_circle_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  data['message'] ?? 'បានរក្សាទុកជោគជ័យ!',
+                  style: const TextStyle(
+                    fontFamily: 'Khmer OS Battambang',
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
             backgroundColor: const Color(0xFF16A34A),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
         );
       } else {
         if (!mounted) return;
+        final errMsg = data['message'] ?? data['error'] ?? 'បរាជ័យក្នុងការរក្សាទុក!';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(data['error'] ?? 'បរាជ័យក្នុងការរក្សាទុក!'),
-            backgroundColor: Colors.redAccent,
+            content: Text(
+              'កំហុសពី Server: $errMsg',
+              style: const TextStyle(fontFamily: 'Khmer OS Battambang'),
+            ),
+            backgroundColor: const Color(0xFFDC2626),
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
     } catch (e) {
-      ApiConfig.isDemoMode = true;
       if (!mounted) return;
-      Navigator.pop(context);
-      widget.onSaved();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('បានរក្សាទុកទិន្នន័យគ្រូជោគជ័យ! (Offline / Demo Mode)'),
-          backgroundColor: Color(0xFF16A34A),
+        SnackBar(
+          content: Text(
+            'បរាជ័យក្នុងការតភ្ជាប់ Server: $e',
+            style: const TextStyle(fontFamily: 'Khmer OS Battambang'),
+          ),
+          backgroundColor: const Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
         ),
       );
     } finally {

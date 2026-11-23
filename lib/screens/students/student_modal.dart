@@ -265,22 +265,28 @@ class _StudentModalState extends State<StudentModal> {
         );
       } else {
         if (!mounted) return;
+        final errMsg = data['message'] ?? data['error'] ?? 'បរាជ័យក្នុងការរក្សាទុក!';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(data['error'] ?? 'បរាជ័យក្នុងការរក្សាទុក!'),
+            content: Text(
+              'កំហុសពី Server: $errMsg',
+              style: const TextStyle(fontFamily: 'Khmer OS Battambang'),
+            ),
             backgroundColor: const Color(0xFFDC2626),
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
     } catch (e) {
-      ApiConfig.isDemoMode = true;
       if (!mounted) return;
-      Navigator.pop(context);
-      widget.onSaved();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('បានរក្សាទុកទិន្នន័យសិស្សជោគជ័យ! (Offline / Demo Mode)'),
-          backgroundColor: Color(0xFF16A34A),
+        SnackBar(
+          content: Text(
+            'បរាជ័យក្នុងការតភ្ជាប់ Server: $e',
+            style: const TextStyle(fontFamily: 'Khmer OS Battambang'),
+          ),
+          backgroundColor: const Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
         ),
       );
     } finally {

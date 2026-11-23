@@ -889,7 +889,7 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                           onPressed: () async {
                             if (nameCtrl.text.isEmpty) return;
                             try {
-                              await http.post(
+                              final res = await http.post(
                                 Uri.parse('$baseUrl/classrooms'),
                                 headers: {'Content-Type': 'application/json'},
                                 body: jsonEncode({
@@ -901,8 +901,31 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                                   'academic_year': academicYear,
                                 }),
                               );
-                              if (ctx.mounted) Navigator.pop(ctx);
-                              _loadAll();
+                              final d = jsonDecode(utf8.decode(res.bodyBytes));
+                              if ((res.statusCode == 200 || res.statusCode == 201) && d['success'] == true) {
+                                if (ctx.mounted) Navigator.pop(ctx);
+                                _loadAll();
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(d['message'] ?? 'បានបង្កើតបន្ទប់រៀនជោគជ័យ!'),
+                                      backgroundColor: const Color(0xFF16A34A),
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                }
+                              } else {
+                                final errMsg = d['message'] ?? d['error'] ?? 'បរាជ័យក្នុងការរក្សាទុក!';
+                                if (ctx.mounted) {
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    SnackBar(
+                                      content: Text('កំហុសពី Server: $errMsg'),
+                                      backgroundColor: const Color(0xFFDC2626),
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                }
+                              }
                             } catch (e) {
                               if (ctx.mounted) {
                                 ScaffoldMessenger.of(ctx).showSnackBar(
@@ -1171,7 +1194,7 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                           onPressed: () async {
                             if (nameCtrl.text.isEmpty) return;
                             try {
-                              await http.put(
+                              final res = await http.put(
                                 Uri.parse('$baseUrl/classrooms/${c['id']}'),
                                 headers: {'Content-Type': 'application/json'},
                                 body: jsonEncode({
@@ -1184,8 +1207,31 @@ class _ClassroomsManagerViewState extends State<ClassroomsManagerView>
                                   'academic_year': academicYear,
                                 }),
                               );
-                              if (ctx.mounted) Navigator.pop(ctx);
-                              _loadAll();
+                              final d = jsonDecode(utf8.decode(res.bodyBytes));
+                              if ((res.statusCode == 200 || res.statusCode == 201) && d['success'] == true) {
+                                if (ctx.mounted) Navigator.pop(ctx);
+                                _loadAll();
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(d['message'] ?? 'បានកែប្រែបន្ទប់រៀនជោគជ័យ!'),
+                                      backgroundColor: const Color(0xFF16A34A),
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                }
+                              } else {
+                                final errMsg = d['message'] ?? d['error'] ?? 'បរាជ័យក្នុងការរក្សាទុក!';
+                                if (ctx.mounted) {
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    SnackBar(
+                                      content: Text('កំហុសពី Server: $errMsg'),
+                                      backgroundColor: const Color(0xFFDC2626),
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                }
+                              }
                             } catch (e) {
                               if (ctx.mounted) {
                                 ScaffoldMessenger.of(ctx).showSnackBar(

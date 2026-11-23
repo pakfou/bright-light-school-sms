@@ -454,17 +454,52 @@ class _FinanceManagerViewState extends State<FinanceManagerView>
                         ),
                         onPressed: () async {
                           if (amountCtrl.text.isEmpty) return;
-                          await http.post(
-                            Uri.parse('$baseUrl/payments/students'),
-                            headers: {'Content-Type': 'application/json'},
-                            body: jsonEncode({
-                              'student_id': sId,
-                              'amount': double.tryParse(amountCtrl.text) ?? 0,
-                              'payment_method': method,
-                            }),
-                          );
-                          if (ctx.mounted) Navigator.pop(ctx);
-                          _loadAll();
+                          try {
+                            final res = await http.post(
+                              Uri.parse('$baseUrl/payments/students'),
+                              headers: {'Content-Type': 'application/json'},
+                              body: jsonEncode({
+                                'student_id': sId,
+                                'amount': double.tryParse(amountCtrl.text) ?? 0,
+                                'payment_method': method,
+                              }),
+                            );
+                            final d = jsonDecode(utf8.decode(res.bodyBytes));
+                            if ((res.statusCode == 200 || res.statusCode == 201) && d['success'] == true) {
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              _loadAll();
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(d['message'] ?? 'បានកត់ត្រាការបង់ប្រាក់សិស្សជោគជ័យ!'),
+                                    backgroundColor: const Color(0xFF16A34A),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            } else {
+                              final errMsg = d['message'] ?? d['error'] ?? 'បរាជ័យក្នុងការរក្សាទុក!';
+                              if (ctx.mounted) {
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  SnackBar(
+                                    content: Text('កំហុសពី Server: $errMsg'),
+                                    backgroundColor: const Color(0xFFDC2626),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            }
+                          } catch (e) {
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                SnackBar(
+                                  content: Text('មិនអាចរក្សាទុកបានទេ៖ $e'),
+                                  backgroundColor: const Color(0xFFDC2626),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            }
+                          }
                         },
                         child: const Text(
                           'រក្សាទុក',
@@ -730,18 +765,53 @@ class _FinanceManagerViewState extends State<FinanceManagerView>
                         ),
                         onPressed: () async {
                           if (amountCtrl.text.isEmpty) return;
-                          await http.post(
-                            Uri.parse('$baseUrl/payments/teacher-salaries'),
-                            headers: {'Content-Type': 'application/json'},
-                            body: jsonEncode({
-                              'teacher_id': tId,
-                              'amount': double.tryParse(amountCtrl.text) ?? 0,
-                              'payment_method': method,
-                              'for_month': monthCtrl.text,
-                            }),
-                          );
-                          if (ctx.mounted) Navigator.pop(ctx);
-                          _loadAll();
+                          try {
+                            final res = await http.post(
+                              Uri.parse('$baseUrl/payments/teacher-salaries'),
+                              headers: {'Content-Type': 'application/json'},
+                              body: jsonEncode({
+                                'teacher_id': tId,
+                                'amount': double.tryParse(amountCtrl.text) ?? 0,
+                                'payment_method': method,
+                                'for_month': monthCtrl.text,
+                              }),
+                            );
+                            final d = jsonDecode(utf8.decode(res.bodyBytes));
+                            if ((res.statusCode == 200 || res.statusCode == 201) && d['success'] == true) {
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              _loadAll();
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(d['message'] ?? 'បានបើកប្រាក់បៀវត្សរ៍គ្រូជោគជ័យ!'),
+                                    backgroundColor: const Color(0xFF16A34A),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            } else {
+                              final errMsg = d['message'] ?? d['error'] ?? 'បរាជ័យក្នុងការរក្សាទុក!';
+                              if (ctx.mounted) {
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  SnackBar(
+                                    content: Text('កំហុសពី Server: $errMsg'),
+                                    backgroundColor: const Color(0xFFDC2626),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            }
+                          } catch (e) {
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                SnackBar(
+                                  content: Text('មិនអាចរក្សាទុកបានទេ៖ $e'),
+                                  backgroundColor: const Color(0xFFDC2626),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            }
+                          }
                         },
                         child: const Text(
                           'រក្សាទុក',

@@ -280,7 +280,7 @@ class _WeeklyScheduleViewState extends State<WeeklyScheduleView> {
             );
 
       final d = jsonDecode(utf8.decode(res.bodyBytes));
-      if (res.statusCode == 200 && d['success'] == true) {
+      if ((res.statusCode == 200 || res.statusCode == 201) && d['success'] == true) {
         _subjectCtrl.clear();
         _showSnackbar(
           isEdit ? 'បានកែប្រែកាលវិភាគជោគជ័យ!' : 'បានបង្កើតកាលវិភាគថ្មីដោយជោគជ័យ!',
@@ -289,7 +289,8 @@ class _WeeklyScheduleViewState extends State<WeeklyScheduleView> {
         await _loadAllData();
         return true;
       } else {
-        _showSnackbar(d['error'] ?? 'បរាជ័យក្នុងការរក្សាទុក!', Colors.red);
+        final errMsg = d['message'] ?? d['error'] ?? 'បរាជ័យក្នុងការរក្សាទុក!';
+        _showSnackbar('កំហុសពី Server: $errMsg', const Color(0xFFDC2626));
         return false;
       }
     } catch (e) {

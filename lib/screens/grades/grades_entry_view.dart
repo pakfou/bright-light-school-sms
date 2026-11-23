@@ -449,7 +449,12 @@ class _GradesEntryViewState extends State<GradesEntryView> {
           'បានរក្សាទុកពិន្ទុ និងគណនាចំណាត់ថ្នាក់សិស្សទាំងអស់ (${_filteredStudents.length} នាក់) ជោគជ័យ!',
         );
       } else {
-        throw Exception('Server error: ${res.statusCode}');
+        String msg = 'Server error: ${res.statusCode}';
+        try {
+          final d = jsonDecode(utf8.decode(res.bodyBytes));
+          if (d['message'] != null) msg = d['message'];
+        } catch (_) {}
+        throw Exception(msg);
       }
     } catch (e) {
       if (mounted) {

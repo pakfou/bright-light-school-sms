@@ -35,11 +35,11 @@ function getCambodiaDateStr() {
 
 const app = express();
 
-// 🌐 Absolute First Middleware: Manual CORS & OPTIONS Preflight
+// 🌐 Absolute First Middleware: Manual CORS & OPTIONS Preflight (Compatible with Express v4/v5)
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma');
+    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma, Access-Control-Request-Private-Network');
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
@@ -54,10 +54,35 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'Cache-Control', 'Pragma', 'Access-Control-Request-Private-Network']
 }));
-app.options('*', cors());
+
+// Body parser with 50MB limit
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// 🛡️ Data Type Cleaners for TiDB Cloud Strict SQL Mode
+const toNull = (v) => (v === undefined || v === null || String(v).trim() === '' || String(v).trim().toLowerCase() === 'null' || String(v).trim().toLowerCase() === 'undefined' ? null : (typeof v === 'string' ? v.trim() : v));
+const toNum = (v, def = 0) => (v === undefined || v === null || v === '' || isNaN(Number(v)) ? def : Number(v));
+const toDate = (v) => (!v || String(v).trim() === '' || String(v).trim().toLowerCase() === 'null' ? null : String(v).split('T')[0]);
 
 // Health & Ping Endpoints
-app.get('/', (req, res) => res.json({ status: 'OK', message: 'BLS Server is Live' }));
+app.get('/', async (req, res) => {
+    let dbStatus = 'Connected';
+    try {
+        await pool.query('SELECT 1');
+    } catch (_) {
+        dbStatus = 'Disconnected';
+    }
+    res.json({ status: 'Live', db: dbStatus });
+});
+app.get(['/health', '/api/health'], async (req, res) => {
+    let dbStatus = 'Connected';
+    try {
+        await pool.query('SELECT 1');
+    } catch (_) {
+        dbStatus = 'Disconnected';
+    }
+    res.json({ status: 'Live', db: dbStatus, time: new Date().toISOString() });
+});
 app.get('/api/ping', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 
 // ==========================================
@@ -176,11 +201,6 @@ app.use((req, res, next) => {
         </html>
     `);
 });
-
-// បង្កើនទំហំទទួលរូបភាព Base64 ដល់ 50MB
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
-
 
 // Serve server console at /console
 app.get('/console', (req, res) => {
@@ -306,34 +326,6 @@ function invalidateMemberCache() {
     lastTeachersFetch = 0;
     cachedStats = null;
 }
-
-// Render & Root Health Check Route
-app.get('/', (req, res) => {
-    res.status(200).send('BLS School API Server is Running!');
-});
-
-// Health check endpoints for Cloud Run, Render, and monitoring
-app.get('/health', async (req, res) => {
-    let dbStatus = 'disconnected';
-    try {
-        await pool.query('SELECT 1');
-        dbStatus = 'connected';
-    } catch (e) {
-        dbStatus = `error: ${e.message}`;
-    }
-    res.json({ status: 'ok', time: new Date().toISOString(), database: dbStatus });
-});
-
-app.get('/api/health', async (req, res) => {
-    let dbStatus = 'disconnected';
-    try {
-        await pool.query('SELECT 1');
-        dbStatus = 'connected';
-    } catch (e) {
-        dbStatus = `error: ${e.message}`;
-    }
-    res.json({ status: 'ok', time: new Date().toISOString(), database: dbStatus });
-});
 
 // Scope JSON headers strictly to API endpoints
 app.use('/api', (req, res, next) => {
@@ -536,37 +528,350 @@ const safeVal = (val, defaultVal = null) => {
 // Auto-create critical tables and indexes for instant performance & stability
 async function ensureTables() {
     try {
+        // 1. Users Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(100) UNIQUE NOT NULL,
+                name VARCHAR(150) NOT NULL,
+                email VARCHAR(150) UNIQUE NOT NULL,
+                password VARCHAR(255) NOT NULL,
+                role VARCHAR(50) NOT NULL DEFAULT 'Admin',
+                phone VARCHAR(50) NULL,
+                telegram_chat_id VARCHAR(100) NULL,
+                status VARCHAR(50) DEFAULT 'Active',
+                role_type VARCHAR(50) DEFAULT 'Admin',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_user_role (role),
+                INDEX idx_user_email (email)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `).catch((e) => console.warn('[ensureTables] users error:', e.message));
+
+        // 2. Grade Levels Table
         await pool.query(`
             CREATE TABLE IF NOT EXISTS grade_levels (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 name VARCHAR(100) NOT NULL,
                 study_type VARCHAR(50) NOT NULL DEFAULT 'Full-Time',
+                monthly_fee DECIMAL(10,2) NOT NULL DEFAULT 0.00,
                 description TEXT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        `).catch(() => {});
+        `).catch((e) => console.warn('[ensureTables] grade_levels error:', e.message));
 
+        // 3. Classrooms Table
         await pool.query(`
             CREATE TABLE IF NOT EXISTS classrooms (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 grade_level_id INT NULL,
                 class_name VARCHAR(100) NOT NULL,
+                level_type VARCHAR(50) NULL DEFAULT 'Full-Time',
+                study_type VARCHAR(50) NULL DEFAULT 'Full-Time',
                 shift VARCHAR(50) DEFAULT 'Morning',
                 room_number VARCHAR(50) DEFAULT 'Room-01',
                 capacity INT DEFAULT 30,
+                teacher_name VARCHAR(150) NULL DEFAULT '',
+                academic_year VARCHAR(50) NOT NULL DEFAULT '2025-2026',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_cls_grade (grade_level_id)
+                INDEX idx_cls_grade (grade_level_id),
+                INDEX idx_cls_shift (shift)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        `).catch(() => {});
+        `).catch((e) => console.warn('[ensureTables] classrooms error:', e.message));
 
+        // 4. Teachers Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS teachers (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NULL,
+                teacher_code VARCHAR(50) UNIQUE NOT NULL,
+                name_kh VARCHAR(150) NOT NULL,
+                name_en VARCHAR(150) NULL,
+                gender VARCHAR(20) DEFAULT 'Male',
+                dob DATE NULL,
+                phone VARCHAR(50) NULL,
+                email VARCHAR(150) NULL,
+                role_title VARCHAR(100) DEFAULT 'គ្រូបង្រៀន',
+                specialized_subject VARCHAR(150) NULL,
+                degree VARCHAR(150) NULL,
+                employment_type VARCHAR(50) DEFAULT 'Full-Time',
+                base_salary DECIMAL(10,2) DEFAULT 0.00,
+                status VARCHAR(50) DEFAULT 'Active',
+                hire_date DATE NULL,
+                photo_url LONGTEXT NULL,
+                telegram_chat_id VARCHAR(100) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_tch_code (teacher_code),
+                INDEX idx_tch_status (status)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `).catch((e) => console.warn('[ensureTables] teachers error:', e.message));
+
+        // 5. Students Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS students (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NULL,
+                student_code VARCHAR(50) UNIQUE NOT NULL,
+                name_kh VARCHAR(150) NOT NULL,
+                name_en VARCHAR(150) NULL,
+                gender VARCHAR(20) DEFAULT 'Female',
+                dob DATE NULL,
+                pob VARCHAR(255) NULL,
+                current_address TEXT NULL,
+                parent_name VARCHAR(150) NULL,
+                parent_relation VARCHAR(50) DEFAULT 'Father',
+                parent_occupation VARCHAR(100) NULL,
+                parent_phone VARCHAR(50) NULL,
+                parent_phone_2 VARCHAR(50) NULL,
+                emergency_phone VARCHAR(50) NULL,
+                telegram_chat_id VARCHAR(100) NULL,
+                study_type VARCHAR(50) NOT NULL DEFAULT 'Full-Time',
+                shift VARCHAR(50) DEFAULT 'Morning',
+                part_time_course VARCHAR(50) DEFAULT 'None',
+                classroom_id INT NULL,
+                photo_url LONGTEXT NULL,
+                status VARCHAR(50) DEFAULT 'Active',
+                allergies_notes TEXT NULL,
+                health_notes TEXT NULL,
+                special_notes TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_std_code (student_code),
+                INDEX idx_std_class (classroom_id),
+                INDEX idx_std_status (status)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `).catch((e) => console.warn('[ensureTables] students error:', e.message));
+
+        // 6. Attendance Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS attendance (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                student_id INT NULL,
+                teacher_id INT NULL,
+                classroom_id INT NULL,
+                date DATE NOT NULL,
+                shift VARCHAR(50) DEFAULT 'Morning',
+                status VARCHAR(50) DEFAULT 'Present',
+                method VARCHAR(50) DEFAULT 'QR_Scan',
+                note VARCHAR(255) NULL,
+                scanned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_att_date (date),
+                INDEX idx_att_student (student_id),
+                INDEX idx_att_teacher (teacher_id),
+                INDEX idx_att_status (status)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `).catch((e) => console.warn('[ensureTables] attendance error:', e.message));
+
+        // 7. Schedules Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS schedules (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                classroom_id INT NULL,
+                teacher_id INT NULL,
+                subject_name VARCHAR(150) NOT NULL,
+                subject VARCHAR(150) NULL,
+                day_of_week VARCHAR(20) NOT NULL DEFAULT 'Mon',
+                start_time VARCHAR(20) NOT NULL DEFAULT '07:30',
+                end_time VARCHAR(20) NOT NULL DEFAULT '09:00',
+                shift VARCHAR(20) NOT NULL DEFAULT 'Morning',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_sched_class (classroom_id),
+                INDEX idx_sched_teacher (teacher_id),
+                INDEX idx_sched_day (day_of_week)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `).catch((e) => console.warn('[ensureTables] schedules error:', e.message));
+
+        // 8. Student Grades Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS student_grades (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                student_id INT NOT NULL,
+                classroom_id INT NULL,
+                subject_name VARCHAR(150) NOT NULL,
+                month_name VARCHAR(50) DEFAULT 'ប្រចាំខែ',
+                attendance_score DECIMAL(5,2) DEFAULT 10.00,
+                homework_score DECIMAL(5,2) DEFAULT 30.00,
+                exam_score DECIMAL(5,2) DEFAULT 60.00,
+                score DECIMAL(5,2) DEFAULT 0.00,
+                grade_letter VARCHAR(5) DEFAULT 'C',
+                rank_in_class INT NULL,
+                remarks TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_grd_student (student_id),
+                INDEX idx_grd_class (classroom_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `).catch((e) => console.warn('[ensureTables] student_grades error:', e.message));
+
+        // 9. Invoices Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS invoices (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                invoice_no VARCHAR(50) UNIQUE NOT NULL,
+                student_id INT NOT NULL,
+                billing_month VARCHAR(50) NOT NULL,
+                original_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+                discount_type VARCHAR(20) DEFAULT 'None',
+                discount_val DECIMAL(10,2) DEFAULT 0.00,
+                net_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+                due_date DATE NULL,
+                status VARCHAR(30) DEFAULT 'Pending',
+                slip_image_url LONGTEXT NULL,
+                khqr_payload TEXT NULL,
+                approved_by VARCHAR(150) NULL,
+                approved_at TIMESTAMP NULL,
+                verified_by INT NULL,
+                verified_at DATETIME NULL,
+                rejection_reason VARCHAR(255) NULL,
+                receipt_number VARCHAR(50) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_inv_student (student_id),
+                INDEX idx_inv_status (status)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `).catch((e) => console.warn('[ensureTables] invoices error:', e.message));
+
+        // 10. Student Payments Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS student_payments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                invoice_no VARCHAR(50) NULL,
+                student_id INT NOT NULL,
+                invoice_id INT NULL,
+                amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+                paid_date DATE NULL,
+                payment_date DATE NULL,
+                payment_method VARCHAR(50) DEFAULT 'KHQR',
+                transaction_ref VARCHAR(100) NULL,
+                received_by VARCHAR(100) NULL,
+                note VARCHAR(255) NULL,
+                status VARCHAR(50) NOT NULL DEFAULT 'Paid',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_pmt_student (student_id),
+                INDEX idx_pmt_date (paid_date)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `).catch((e) => console.warn('[ensureTables] student_payments error:', e.message));
+
+        // 11. Teacher Salaries Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS teacher_salaries (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                pay_slip_no VARCHAR(50) NULL,
+                teacher_id INT NOT NULL,
+                salary_month VARCHAR(50) NULL,
+                base_salary DECIMAL(10,2) DEFAULT 0.00,
+                bonus DECIMAL(10,2) DEFAULT 0.00,
+                deductions DECIMAL(10,2) DEFAULT 0.00,
+                net_salary DECIMAL(10,2) NULL,
+                paid_date DATE NULL,
+                status VARCHAR(50) DEFAULT 'Paid',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_sal_teacher (teacher_id),
+                INDEX idx_sal_date (paid_date)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `).catch((e) => console.warn('[ensureTables] teacher_salaries error:', e.message));
+
+        // 12. Audit Logs Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NULL,
+                user_name VARCHAR(150) NULL,
+                role VARCHAR(50) NULL,
+                action VARCHAR(100) NOT NULL,
+                table_name VARCHAR(100) NOT NULL,
+                record_id INT NULL,
+                old_values JSON NULL,
+                new_values JSON NULL,
+                ip_address VARCHAR(50) NULL,
+                user_agent TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_audit_table (table_name),
+                INDEX idx_audit_time (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `).catch((e) => console.warn('[ensureTables] audit_logs error:', e.message));
+
+        // 13. Period Closings Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS period_closings (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                closing_type VARCHAR(50) NOT NULL,
+                start_date DATE NOT NULL,
+                end_date DATE NOT NULL,
+                total_income DECIMAL(10,2) DEFAULT 0.00,
+                total_expense DECIMAL(10,2) DEFAULT 0.00,
+                net_profit DECIMAL(10,2) DEFAULT 0.00,
+                closed_by VARCHAR(150) NULL,
+                notes TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `).catch((e) => console.warn('[ensureTables] period_closings error:', e.message));
+
+        // --- Column Safety Alterations ---
         await pool.query('ALTER TABLE classrooms ADD COLUMN grade_level_id INT NULL').catch(() => {});
+        await pool.query("ALTER TABLE classrooms ADD COLUMN level_type VARCHAR(50) NULL DEFAULT 'Full-Time'").catch(() => {});
+        await pool.query("ALTER TABLE classrooms ADD COLUMN study_type VARCHAR(50) NULL DEFAULT 'Full-Time'").catch(() => {});
         await pool.query("ALTER TABLE classrooms ADD COLUMN shift VARCHAR(50) DEFAULT 'Morning'").catch(() => {});
         await pool.query("ALTER TABLE classrooms ADD COLUMN room_number VARCHAR(50) DEFAULT 'Room-01'").catch(() => {});
         await pool.query('ALTER TABLE classrooms ADD COLUMN capacity INT DEFAULT 30').catch(() => {});
         await pool.query("ALTER TABLE classrooms ADD COLUMN teacher_name VARCHAR(150) NULL DEFAULT ''").catch(() => {});
         await pool.query("ALTER TABLE classrooms ADD COLUMN academic_year VARCHAR(50) NULL DEFAULT '2025-2026'").catch(() => {});
-        await pool.query("ALTER TABLE classrooms MODIFY COLUMN shift VARCHAR(50) DEFAULT 'Morning'").catch(() => {});
 
+        await pool.query('ALTER TABLE schedules ADD COLUMN subject VARCHAR(150) NULL').catch(() => {});
+        await pool.query('ALTER TABLE schedules ADD COLUMN shift VARCHAR(20) DEFAULT "Morning"').catch(() => {});
+
+        await pool.query('ALTER TABLE student_payments ADD COLUMN invoice_no VARCHAR(50) NULL').catch(() => {});
+        await pool.query('ALTER TABLE student_payments ADD COLUMN payment_date DATE NULL').catch(() => {});
+        await pool.query('ALTER TABLE student_payments ADD COLUMN paid_date DATE NULL').catch(() => {});
+        await pool.query("ALTER TABLE student_payments ADD COLUMN payment_method VARCHAR(50) DEFAULT 'KHQR'").catch(() => {});
+        await pool.query("ALTER TABLE student_payments ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT 'Paid'").catch(() => {});
+        await pool.query('ALTER TABLE student_payments ADD COLUMN note VARCHAR(255) NULL').catch(() => {});
+
+        await pool.query('ALTER TABLE teacher_salaries ADD COLUMN pay_slip_no VARCHAR(50) NULL').catch(() => {});
+        await pool.query('ALTER TABLE teacher_salaries ADD COLUMN salary_month VARCHAR(50) NULL').catch(() => {});
+        await pool.query('ALTER TABLE teacher_salaries ADD COLUMN deductions DECIMAL(10,2) DEFAULT 0.00').catch(() => {});
+        await pool.query('ALTER TABLE teacher_salaries ADD COLUMN net_salary DECIMAL(10,2) NULL').catch(() => {});
+        await pool.query('ALTER TABLE teacher_salaries ADD COLUMN paid_date DATE NULL').catch(() => {});
+        await pool.query("ALTER TABLE teacher_salaries ADD COLUMN status VARCHAR(50) DEFAULT 'Paid'").catch(() => {});
+
+        await pool.query('ALTER TABLE students ADD COLUMN parent_phone_2 VARCHAR(50) NULL').catch(() => {});
+        await pool.query('ALTER TABLE students ADD COLUMN emergency_phone VARCHAR(50) NULL').catch(() => {});
+        await pool.query('ALTER TABLE students ADD COLUMN telegram_chat_id VARCHAR(100) NULL').catch(() => {});
+        await pool.query('ALTER TABLE students ADD COLUMN allergies_notes TEXT NULL').catch(() => {});
+        await pool.query('ALTER TABLE students ADD COLUMN health_notes TEXT NULL').catch(() => {});
+        await pool.query('ALTER TABLE students ADD COLUMN special_notes TEXT NULL').catch(() => {});
+
+        await pool.query('ALTER TABLE teachers ADD COLUMN telegram_chat_id VARCHAR(100) NULL').catch(() => {});
+        await pool.query('ALTER TABLE teachers ADD COLUMN employment_type VARCHAR(50) DEFAULT "Full-Time"').catch(() => {});
+        await pool.query('ALTER TABLE teachers ADD COLUMN degree VARCHAR(150) NULL').catch(() => {});
+
+        await pool.query('ALTER TABLE users ADD COLUMN role_type VARCHAR(50) DEFAULT "Admin"').catch(() => {});
+        await pool.query('ALTER TABLE student_grades ADD COLUMN rank_in_class INT NULL').catch(() => {});
+
+        // --- Seed Default Data if Missing ---
+        // 1. Seed Admin
+        const [adminRows] = await pool.query("SELECT id FROM users WHERE email = 'admin@brightlight.edu.kh' LIMIT 1").catch(() => [[]]);
+        if (!adminRows || adminRows.length === 0) {
+            await pool.query(`
+                INSERT INTO users (username, name, email, password, role, status)
+                VALUES ('admin', 'អ្នកគ្រប់គ្រងប្រព័ន្ធ', 'admin@brightlight.edu.kh', '$2a$10$wT3Wq7m3Zz1N2jR9Y5mY9OCW7S9g9Z3XgO4f1mC8sY8Z9K1M1m1m.', 'Admin', 'Active')
+            `).catch((e) => console.warn('[ensureTables] admin seed error:', e.message));
+            console.log('✅ Default Admin ready: admin@brightlight.edu.kh / 1202');
+        }
+
+        // 2. Seed Test Teacher (TCH-TEST)
+        const [teacherRows] = await pool.query("SELECT id FROM teachers WHERE teacher_code = 'TCH-TEST' LIMIT 1").catch(() => [[]]);
+        if (!teacherRows || teacherRows.length === 0) {
+            await pool.query(`
+                INSERT INTO teachers (teacher_code, name_kh, name_en, gender, role_title, specialized_subject, base_salary, status)
+                VALUES ('TCH-TEST', 'គ្រូបង្រៀន សាកល្បង', 'Test Teacher', 'Male', 'គ្រូបង្រៀន', 'ចំណេះដឹងទូទៅ', 450.00, 'Active')
+            `).catch((e) => console.warn('[ensureTables] teacher seed error:', e.message));
+            console.log('✅ Default Test Teacher ready: TCH-TEST');
+        }
+
+        // 3. Seed Grade Levels if empty
         const [[glCheck]] = await pool.query('SELECT COUNT(*) as count FROM grade_levels').catch(() => [[{ count: 1 }]]);
         if (glCheck && glCheck.count === 0) {
             await pool.query(`
@@ -589,6 +894,7 @@ async function ensureTables() {
             `).catch(() => {});
         }
 
+        // 4. Seed Classrooms if empty
         const [[clsCheck]] = await pool.query('SELECT COUNT(*) as count FROM classrooms').catch(() => [[{ count: 1 }]]);
         if (clsCheck && clsCheck.count === 0) {
             const [levels] = await pool.query('SELECT id FROM grade_levels ORDER BY id ASC LIMIT 3').catch(() => [[]]);
@@ -603,42 +909,7 @@ async function ensureTables() {
             `, [g1, g2, g3]).catch(() => {});
         }
 
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS schedules (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                classroom_id INT NULL,
-                teacher_id INT NULL,
-                subject_name VARCHAR(150) NOT NULL,
-                day_of_week VARCHAR(20) NOT NULL DEFAULT 'Mon',
-                start_time VARCHAR(20) NOT NULL DEFAULT '07:30',
-                end_time VARCHAR(20) NOT NULL DEFAULT '09:00',
-                shift VARCHAR(20) NOT NULL DEFAULT 'Morning',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX idx_sched_class (classroom_id),
-                INDEX idx_sched_teacher (teacher_id),
-                INDEX idx_sched_day (day_of_week)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        `).catch(() => {});
-
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS student_grades (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                student_id INT NOT NULL,
-                classroom_id INT NULL,
-                subject_name VARCHAR(150) NOT NULL,
-                month_name VARCHAR(50) DEFAULT 'ប្រចាំខែ',
-                score DECIMAL(5,2) DEFAULT 0.00,
-                grade_letter VARCHAR(5) DEFAULT 'C',
-                remarks TEXT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX idx_grd_student (student_id),
-                INDEX idx_grd_class (classroom_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        `).catch(() => {});
-
-        // Check if schedules has records; if empty, insert default weekly schedules
+        // 5. Seed Schedules if empty
         const [[schedCheck]] = await pool.query('SELECT COUNT(*) as count FROM schedules').catch(() => [[{ count: 1 }]]);
         if (schedCheck && schedCheck.count === 0) {
             const [[firstClass]] = await pool.query('SELECT id FROM classrooms LIMIT 1').catch(() => [[null]]);
@@ -646,132 +917,21 @@ async function ensureTables() {
             const cId = firstClass ? firstClass.id : null;
             const tId = firstTeacher ? firstTeacher.id : null;
             await pool.query(`
-                INSERT INTO schedules (classroom_id, teacher_id, subject_name, day_of_week, start_time, end_time, shift) VALUES
-                (?, ?, 'ភាសាខ្មែរ (Khmer Literature)', 'Mon', '07:30', '09:00', 'Morning'),
-                (?, ?, 'គណិតវិទ្យា (Mathematics)', 'Mon', '09:15', '10:45', 'Morning'),
-                (?, ?, 'ភាសាអង់គ្លេស (English Language)', 'Tue', '07:30', '09:00', 'Morning'),
-                (?, ?, 'វិទ្យាសាស្ត្រ (General Science)', 'Tue', '09:15', '10:45', 'Morning'),
-                (?, ?, 'កុំព្យូទ័រ (Computer Studies)', 'Wed', '07:30', '09:00', 'Morning'),
-                (?, ?, 'សង្គមវិទ្យា (Social Studies)', 'Thu', '07:30', '09:00', 'Morning'),
-                (?, ?, 'សិល្បៈ & កីឡា (Arts & Sports)', 'Fri', '07:30', '09:00', 'Morning')
+                INSERT INTO schedules (classroom_id, teacher_id, subject_name, subject, day_of_week, start_time, end_time, shift) VALUES
+                (?, ?, 'ភាសាខ្មែរ (Khmer Literature)', 'ភាសាខ្មែរ', 'Mon', '07:30', '09:00', 'Morning'),
+                (?, ?, 'គណិតវិទ្យា (Mathematics)', 'គណិតវិទ្យា', 'Mon', '09:15', '10:45', 'Morning'),
+                (?, ?, 'ភាសាអង់គ្លេស (English Language)', 'ភាសាអង់គ្លេស', 'Tue', '07:30', '09:00', 'Morning'),
+                (?, ?, 'វិទ្យាសាស្ត្រ (General Science)', 'វិទ្យាសាស្ត្រ', 'Tue', '09:15', '10:45', 'Morning'),
+                (?, ?, 'កុំព្យូទ័រ (Computer Studies)', 'កុំព្យូទ័រ', 'Wed', '07:30', '09:00', 'Morning'),
+                (?, ?, 'សង្គមវិទ្យា (Social Studies)', 'សង្គមវិទ្យា', 'Thu', '07:30', '09:00', 'Morning'),
+                (?, ?, 'សិល្បៈ & កីឡា (Arts & Sports)', 'សិល្បៈ & កីឡា', 'Fri', '07:30', '09:00', 'Morning')
             `, [cId, tId, cId, tId, cId, tId, cId, tId, cId, tId, cId, tId, cId, tId]).catch(() => {});
         }
 
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS student_payments (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                invoice_no VARCHAR(50) NULL,
-                student_id INT NOT NULL,
-                amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-                paid_date DATE NULL,
-                payment_method VARCHAR(50) DEFAULT 'KHQR',
-                note VARCHAR(255) NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_pmt_student (student_id),
-                INDEX idx_pmt_date (paid_date)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        `).catch(() => {});
-
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS teacher_salaries (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                pay_slip_no VARCHAR(50) NULL,
-                teacher_id INT NOT NULL,
-                salary_month VARCHAR(50) NULL,
-                base_salary DECIMAL(10,2) DEFAULT 0.00,
-                bonus DECIMAL(10,2) DEFAULT 0.00,
-                deductions DECIMAL(10,2) DEFAULT 0.00,
-                net_salary DECIMAL(10,2) NULL,
-                paid_date DATE NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_sal_teacher (teacher_id),
-                INDEX idx_sal_date (paid_date)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        `).catch(() => {});
-
-        await pool.query('ALTER TABLE student_payments ADD COLUMN invoice_no VARCHAR(50) NULL').catch(() => {});
-        await pool.query("ALTER TABLE student_payments ADD COLUMN payment_method VARCHAR(50) DEFAULT 'KHQR'").catch(() => {});
-        await pool.query('ALTER TABLE student_payments ADD COLUMN note VARCHAR(255) NULL').catch(() => {});
-        await pool.query('ALTER TABLE student_payments ADD COLUMN paid_date DATE NULL').catch(() => {});
-
-        await pool.query('ALTER TABLE teacher_salaries ADD COLUMN pay_slip_no VARCHAR(50) NULL').catch(() => {});
-        await pool.query('ALTER TABLE teacher_salaries ADD COLUMN salary_month VARCHAR(50) NULL').catch(() => {});
-        await pool.query('ALTER TABLE teacher_salaries ADD COLUMN deductions DECIMAL(10,2) DEFAULT 0.00').catch(() => {});
-        await pool.query('ALTER TABLE teacher_salaries ADD COLUMN net_salary DECIMAL(10,2) NULL').catch(() => {});
-        await pool.query('ALTER TABLE teacher_salaries ADD COLUMN paid_date DATE NULL').catch(() => {});
-
-        // Ensure status columns are VARCHAR(50) to prevent 'Data truncated for column status' errors
-        await pool.query("ALTER TABLE teachers MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'Active'").catch(() => {});
-        await pool.query("ALTER TABLE students MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'Active'").catch(() => {});
-        await pool.query("ALTER TABLE attendance MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'Present'").catch(() => {});
-        await pool.query("ALTER TABLE student_payments MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'Paid'").catch(() => {});
-        await pool.query("ALTER TABLE users MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'Active'").catch(() => {});
-
-        await pool.query('ALTER TABLE attendance ADD INDEX idx_att_date_status (date, status)').catch(() => {});
-        await pool.query('ALTER TABLE attendance ADD INDEX idx_att_student (student_id)').catch(() => {});
-        await pool.query('ALTER TABLE attendance ADD INDEX idx_att_teacher (teacher_id)').catch(() => {});
-        await pool.query('ALTER TABLE students ADD INDEX idx_std_code (student_code)').catch(() => {});
-        await pool.query('ALTER TABLE students ADD INDEX idx_std_class (classroom_id)').catch(() => {});
-        await pool.query('ALTER TABLE teachers ADD INDEX idx_tch_code (teacher_code)').catch(() => {});
-        await pool.query('ALTER TABLE student_grades ADD COLUMN rank_in_class INT NULL').catch(() => {});
-        await pool.query('ALTER TABLE students ADD INDEX idx_status_gender (status, gender)').catch(() => {});
-        await pool.query('ALTER TABLE attendance ADD INDEX idx_scan_date_status (date, status)').catch(() => {});
-        await pool.query('ALTER TABLE invoices ADD INDEX idx_month_status (billing_month, status)').catch(() => {});
-
-        // 🛡️ Enterprise Additions: Audit Logs & Invoicing System
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS audit_logs (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NULL,
-                user_name VARCHAR(150) NULL,
-                role VARCHAR(50) NULL,
-                action VARCHAR(100) NOT NULL,
-                table_name VARCHAR(100) NOT NULL,
-                record_id INT NULL,
-                old_values JSON NULL,
-                new_values JSON NULL,
-                ip_address VARCHAR(50) NULL,
-                user_agent TEXT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_audit_table (table_name),
-                INDEX idx_audit_time (created_at)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        `).catch(() => {});
-
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS invoices (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                invoice_no VARCHAR(50) UNIQUE NOT NULL,
-                student_id INT NOT NULL,
-                billing_month VARCHAR(50) NOT NULL,
-                original_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-                discount_type VARCHAR(20) DEFAULT 'None',
-                discount_val DECIMAL(10,2) DEFAULT 0.00,
-                net_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-                due_date DATE NULL,
-                status VARCHAR(30) DEFAULT 'Pending',
-                slip_image_url LONGTEXT NULL,
-                khqr_payload TEXT NULL,
-                approved_by VARCHAR(150) NULL,
-                approved_at TIMESTAMP NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_inv_student (student_id),
-                INDEX idx_inv_status (status)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        `).catch(() => {});
-
-        await pool.query('ALTER TABLE students ADD COLUMN parent_phone_2 VARCHAR(50) NULL').catch(() => {});
-        await pool.query('ALTER TABLE students ADD COLUMN telegram_chat_id VARCHAR(100) NULL').catch(() => {});
-        await pool.query('ALTER TABLE students ADD COLUMN allergies_notes TEXT NULL').catch(() => {});
-        await pool.query('ALTER TABLE students ADD COLUMN health_notes TEXT NULL').catch(() => {});
-        await pool.query('ALTER TABLE users ADD COLUMN role_type VARCHAR(50) DEFAULT "Admin"').catch(() => {});
-        await pool.query('ALTER TABLE invoices ADD COLUMN verified_by INT NULL').catch(() => {});
-        await pool.query('ALTER TABLE invoices ADD COLUMN verified_at DATETIME NULL').catch(() => {});
-        await pool.query('ALTER TABLE invoices ADD COLUMN rejection_reason VARCHAR(255) NULL').catch(() => {});
-        await pool.query('ALTER TABLE invoices ADD COLUMN receipt_number VARCHAR(50) NULL').catch(() => {});
-        await pool.query('ALTER TABLE invoices ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP').catch(() => {});
-        await pool.query('ALTER TABLE invoices ADD INDEX idx_status_verification (status, verified_at)').catch(() => {});
-    } catch (_) {}
+        console.log('✅ ensureTables: All database tables, columns, indexes, and seed data initialized.');
+    } catch (err) {
+        console.error('[ensureTables Error]:', err.message);
+    }
 }
 ensureTables();
 
@@ -1269,12 +1429,12 @@ app.get('/api/attendance/teachers-trend', async (req, res) => {
 // 3. ATTENDANCE SCANNER
 // ==========================================
 app.post('/api/attendance/scan', async (req, res) => {
-    const cleanCode = (req.body.code || req.body.student_code || req.body.teacher_code || '').toString().trim();
+    const cleanCode = toNull(req.body.code || req.body.student_code || req.body.teacher_code);
     const { classroom_id, shift, status } = req.body;
-    const today = new Date().toISOString().slice(0, 10);
-    const scanStatus = status || 'Present';
+    const today = getCambodiaDateStr();
+    const scanStatus = toNull(status) || 'Present';
     if (!cleanCode) {
-        return res.status(400).json({ success: false, error: 'សូមបញ្ចូលកូដ ឬស្កេន QR Code!' });
+        return res.status(400).json({ success: false, message: 'សូមបញ្ចូលកូដ ឬស្កេន QR Code!', error: 'សូមបញ្ចូលកូដ ឬស្កេន QR Code!' });
     }
     try {
         const [stds] = await pool.query(
@@ -1286,9 +1446,10 @@ app.post('/api/attendance/scan', async (req, res) => {
         );
         if (stds.length > 0) {
             const s = stds[0];
+            const cId = (classroom_id && toNum(classroom_id, 0) > 0) ? toNum(classroom_id, 0) : (s.classroom_id || null);
             await pool.query(
                 'INSERT INTO attendance (student_id, classroom_id, date, shift, status) VALUES (?, ?, ?, ?, ?)',
-                [s.id, classroom_id || s.classroom_id || null, today, shift || s.shift || 'Morning', scanStatus]
+                [s.id, cId, today, toNull(shift) || s.shift || 'Morning', scanStatus]
             );
 
             // 📢 Real-time Telegram Notification
@@ -1329,7 +1490,7 @@ app.post('/api/attendance/scan', async (req, res) => {
             const t = tchs[0];
             await pool.query(
                 'INSERT INTO attendance (teacher_id, date, shift, status) VALUES (?, ?, ?, ?)',
-                [t.id, today, shift || 'Morning', scanStatus]
+                [t.id, today, toNull(shift) || 'Morning', scanStatus]
             );
             return res.json({
                 success: true,
@@ -1345,8 +1506,11 @@ app.post('/api/attendance/scan', async (req, res) => {
                 }
             });
         }
-        return res.status(404).json({ success: false, error: `រកមិនឃើញកូដសម្គាល់ "${cleanCode}" ក្នុងប្រព័ន្ធឡើយ!` });
-    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+        return res.status(404).json({ success: false, message: `រកមិនឃើញកូដសម្គាល់ "${cleanCode}" ក្នុងប្រព័ន្ធឡើយ!`, error: `រកមិនឃើញកូដសម្គាល់ "${cleanCode}" ក្នុងប្រព័ន្ធឡើយ!` });
+    } catch (err) {
+        console.error('DB Error [POST /api/attendance/scan]:', err);
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message, error: err.sqlMessage || err.message });
+    }
 });
 
 app.get(['/api/attendance/recent', '/api/attendance/today', '/api/attendance', '/attendance/recent', '/attendance/today'], async (req, res) => {
@@ -1444,33 +1608,45 @@ app.post('/api/teachers', async (req, res) => {
     try {
         const safeNameKh = (name_kh || '').trim();
         if (!safeNameKh) {
-            return res.status(400).json({ success: false, error: 'ឈ្មោះគ្រូជាភាសាខ្មែរត្រូវតែបំពេញ' });
+            return res.status(400).json({ success: false, message: 'ឈ្មោះគ្រូជាភាសាខ្មែរត្រូវតែបំពេញ', error: 'ឈ្មោះគ្រូជាភាសាខ្មែរត្រូវតែបំពេញ' });
         }
-        const safePhoto = (typeof photo_url === 'string' && photo_url.trim().length > 0) ? photo_url.trim() : null;
-        const tCode = (teacher_code || '').trim() || `TCH-${Math.floor(1000 + Math.random() * 9000)}`;
+        const tCode = toNull(teacher_code) || `TCH-${Math.floor(1000 + Math.random() * 9000)}`;
         await pool.query(
             `INSERT INTO teachers (teacher_code, name_kh, name_en, gender, dob, phone, email, role_title, specialized_subject, base_salary, status, hire_date, photo_url)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [tCode, safeNameKh, (name_en || '').trim(), gender || 'Male', fmtDate(dob), (phone || '').trim(), (email || '').trim(), role_title || 'គ្រូបង្រៀន', (specialized_subject || '').trim(), parseFloat(base_salary) || 0, status || 'Active', fmtDate(hire_date), safePhoto]
+            [
+                tCode,
+                safeNameKh,
+                toNull(name_en),
+                toNull(gender) || 'Male',
+                toDate(dob),
+                toNull(phone),
+                toNull(email),
+                toNull(role_title) || 'គ្រូបង្រៀន',
+                toNull(specialized_subject),
+                toNum(base_salary, 0),
+                toNull(status) || 'Active',
+                toDate(hire_date),
+                toNull(photo_url)
+            ]
         );
         invalidateMemberCache();
         return res.json({ success: true, message: 'បានចុះឈ្មោះគ្រូជោគជ័យ!' });
-    } catch (e) {
-        console.error('[Error] POST /api/teachers:', e);
-        return res.status(500).json({ success: false, error: e.message });
+    } catch (err) {
+        console.error('DB Error [POST /api/teachers]:', err);
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message, error: err.sqlMessage || err.message });
     }
 });
 
 app.put('/api/teachers/:id', async (req, res) => {
-    const id = parseInt(req.params.id, 10);
-    if (!id) return res.status(400).json({ success: false, error: 'Teacher ID មិនត្រឹមត្រូវ!' });
+    const id = toNum(req.params.id, 0);
+    if (!id) return res.status(400).json({ success: false, message: 'Teacher ID មិនត្រឹមត្រូវ!', error: 'Teacher ID មិនត្រឹមត្រូវ!' });
     const { name_kh, name_en, gender, dob, phone, email, role_title, specialized_subject, base_salary, status, hire_date, photo_url } = req.body;
     try {
-        const safeNameKh = safeVal(name_kh);
+        const safeNameKh = toNull(name_kh);
         if (!safeNameKh) {
-            return res.status(400).json({ success: false, error: 'ឈ្មោះគ្រូជាភាសាខ្មែរត្រូវតែបំពេញ' });
+            return res.status(400).json({ success: false, message: 'ឈ្មោះគ្រូជាភាសាខ្មែរត្រូវតែបំពេញ', error: 'ឈ្មោះគ្រូជាភាសាខ្មែរត្រូវតែបំពេញ' });
         }
-        const safePhoto = safeVal(photo_url);
         await pool.query(
             `UPDATE teachers SET 
                 name_kh = ?, 
@@ -1488,25 +1664,25 @@ app.put('/api/teachers/:id', async (req, res) => {
              WHERE id = ?`,
             [
                 safeNameKh,
-                safeVal(name_en),
-                safeVal(gender, 'Male'),
-                fmtDate(dob),
-                safeVal(phone),
-                safeVal(email),
-                safeVal(role_title, 'គ្រូបង្រៀន'),
-                safeVal(specialized_subject),
-                parseFloat(base_salary) || 0,
-                safeVal(status, 'Active'),
-                fmtDate(hire_date),
-                safePhoto,
+                toNull(name_en),
+                toNull(gender) || 'Male',
+                toDate(dob),
+                toNull(phone),
+                toNull(email),
+                toNull(role_title) || 'គ្រូបង្រៀន',
+                toNull(specialized_subject),
+                toNum(base_salary, 0),
+                toNull(status) || 'Active',
+                toDate(hire_date),
+                toNull(photo_url),
                 id
             ]
         );
         invalidateMemberCache();
         return res.json({ success: true, message: 'បានកែប្រែទិន្នន័យគ្រូជោគជ័យ!' });
-    } catch (e) {
-        console.error('[Error] PUT /api/teachers/:id:', e);
-        return res.status(500).json({ success: false, error: e.message });
+    } catch (err) {
+        console.error('DB Error [PUT /api/teachers/:id]:', err);
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message, error: err.sqlMessage || err.message });
     }
 });
 
@@ -1552,33 +1728,49 @@ app.post('/api/students', async (req, res) => {
     try {
         const safeNameKh = (name_kh || '').trim();
         if (!safeNameKh) {
-            return res.status(400).json({ success: false, error: 'ឈ្មោះសិស្សជាភាសាខ្មែរត្រូវតែបំពេញ' });
+            return res.status(400).json({ success: false, message: 'ឈ្មោះសិស្សជាភាសាខ្មែរត្រូវតែបំពេញ', error: 'ឈ្មោះសិស្សជាភាសាខ្មែរត្រូវតែបំពេញ' });
         }
-        const sCode = (student_code || '').trim() || `BLS-${Math.floor(1000 + Math.random() * 9000)}`;
-        const safePhoto = (typeof photo_url === 'string' && photo_url.trim().length > 0) ? photo_url.trim() : null;
+        const sCode = toNull(student_code) || `BLS-${Math.floor(1000 + Math.random() * 9000)}`;
+        const cId = (classroom_id && toNum(classroom_id, 0) > 0) ? toNum(classroom_id, 0) : null;
+        const sType = toNull(study_type) || 'Full-Time';
         await pool.query(
             `INSERT INTO students (student_code, name_kh, name_en, gender, dob, pob, parent_name, parent_phone, study_type, shift, part_time_course, classroom_id, photo_url, status)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
-            [sCode, safeNameKh, (name_en || '').trim(), gender || 'Female', fmtDate(dob), (pob || '').trim(), (parent_name || '').trim(), (parent_phone || '').trim(), study_type || 'Full-Time', shift || 'Morning', study_type === 'Part-Time' ? part_time_course : 'None', classroom_id || null, safePhoto]
+            [
+                sCode,
+                safeNameKh,
+                toNull(name_en),
+                toNull(gender) || 'Female',
+                toDate(dob),
+                toNull(pob),
+                toNull(parent_name),
+                toNull(parent_phone),
+                sType,
+                toNull(shift) || 'Morning',
+                sType === 'Part-Time' ? (toNull(part_time_course) || 'None') : 'None',
+                cId,
+                toNull(photo_url)
+            ]
         );
         invalidateMemberCache();
         return res.json({ success: true, message: 'បានចុះឈ្មោះសិស្សជោគជ័យ!' });
-    } catch (e) {
-        console.error('[Error] POST /api/students:', e);
-        return res.status(500).json({ success: false, error: e.message });
+    } catch (err) {
+        console.error('DB Error [POST /api/students]:', err);
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message, error: err.sqlMessage || err.message });
     }
 });
 
 app.put('/api/students/:id', async (req, res) => {
-    const id = parseInt(req.params.id, 10);
-    if (!id) return res.status(400).json({ success: false, error: 'Student ID មិនត្រឹមត្រូវ!' });
+    const id = toNum(req.params.id, 0);
+    if (!id) return res.status(400).json({ success: false, message: 'Student ID មិនត្រឹមត្រូវ!', error: 'Student ID មិនត្រឹមត្រូវ!' });
     const { name_kh, name_en, gender, dob, pob, parent_name, parent_phone, study_type, shift, part_time_course, classroom_id, photo_url } = req.body;
     try {
-        const safeNameKh = safeVal(name_kh);
+        const safeNameKh = toNull(name_kh);
         if (!safeNameKh) {
-            return res.status(400).json({ success: false, error: 'ឈ្មោះសិស្សជាភាសាខ្មែរត្រូវតែបំពេញ' });
+            return res.status(400).json({ success: false, message: 'ឈ្មោះសិស្សជាភាសាខ្មែរត្រូវតែបំពេញ', error: 'ឈ្មោះសិស្សជាភាសាខ្មែរត្រូវតែបំពេញ' });
         }
-        const safePhoto = safeVal(photo_url);
+        const cId = (classroom_id && toNum(classroom_id, 0) > 0) ? toNum(classroom_id, 0) : null;
+        const sType = toNull(study_type) || 'Full-Time';
         await pool.query(
             `UPDATE students SET 
                 name_kh = ?, 
@@ -1596,25 +1788,25 @@ app.put('/api/students/:id', async (req, res) => {
              WHERE id = ?`,
             [
                 safeNameKh,
-                safeVal(name_en),
-                safeVal(gender, 'Female'),
-                fmtDate(dob),
-                safeVal(pob),
-                safeVal(parent_name),
-                safeVal(parent_phone),
-                safeVal(study_type, 'Full-Time'),
-                safeVal(shift, 'Morning'),
-                study_type === 'Part-Time' ? safeVal(part_time_course, 'None') : 'None',
-                (classroom_id && parseInt(classroom_id, 10) > 0) ? parseInt(classroom_id, 10) : null,
-                safePhoto,
+                toNull(name_en),
+                toNull(gender) || 'Female',
+                toDate(dob),
+                toNull(pob),
+                toNull(parent_name),
+                toNull(parent_phone),
+                sType,
+                toNull(shift) || 'Morning',
+                sType === 'Part-Time' ? (toNull(part_time_course) || 'None') : 'None',
+                cId,
+                toNull(photo_url),
                 id
             ]
         );
         invalidateMemberCache();
         return res.json({ success: true, message: 'បានកែប្រែទិន្នន័យសិស្សជោគជ័យ!' });
-    } catch (e) {
-        console.error('[Error] PUT /api/students/:id:', e);
-        return res.status(500).json({ success: false, error: e.message });
+    } catch (err) {
+        console.error('DB Error [PUT /api/students/:id]:', err);
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message, error: err.sqlMessage || err.message });
     }
 });
 
@@ -1679,28 +1871,44 @@ app.get(['/api/grade-levels', '/grade-levels'], async (req, res) => {
 });
 
 app.post(['/api/grade-levels', '/grade-levels'], async (req, res) => {
-    const { name, study_type, description } = req.body;
+    const { name, study_type, description, monthly_fee } = req.body;
     try {
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS grade_levels (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                name VARCHAR(100) NOT NULL,
-                study_type VARCHAR(50) NOT NULL DEFAULT 'Full-Time',
-                description TEXT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        `).catch(() => {});
-        const [result] = await pool.query('INSERT INTO grade_levels (name, study_type, description) VALUES (?, ?, ?)', [name, study_type || 'Full-Time', description || '']);
+        const [result] = await pool.query(
+            'INSERT INTO grade_levels (name, study_type, description, monthly_fee) VALUES (?, ?, ?, ?)',
+            [
+                toNull(name) || 'កម្រិតសិក្សា',
+                toNull(study_type) || 'Full-Time',
+                toNull(description),
+                toNum(monthly_fee, 0)
+            ]
+        );
         return res.json({ success: true, id: result.insertId, message: 'បានបង្កើតកម្រិតសិក្សាថ្មីជោគជ័យ!' });
-    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+    } catch (err) {
+        console.error('DB Error [POST /api/grade-levels]:', err);
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message, error: err.sqlMessage || err.message });
+    }
 });
 
 app.put(['/api/grade-levels/:id', '/grade-levels/:id'], async (req, res) => {
-    const { name, study_type, description } = req.body;
+    const id = toNum(req.params.id, 0);
+    if (!id) return res.status(400).json({ success: false, message: 'Grade Level ID មិនត្រឹមត្រូវ!', error: 'Grade Level ID មិនត្រឹមត្រូវ!' });
+    const { name, study_type, description, monthly_fee } = req.body;
     try {
-        await pool.query('UPDATE grade_levels SET name = ?, study_type = ?, description = ? WHERE id = ?', [name, study_type || 'Full-Time', description || '', req.params.id]);
+        await pool.query(
+            'UPDATE grade_levels SET name = ?, study_type = ?, description = ?, monthly_fee = COALESCE(?, monthly_fee) WHERE id = ?',
+            [
+                toNull(name) || 'កម្រិតសិក្សា',
+                toNull(study_type) || 'Full-Time',
+                toNull(description),
+                toNum(monthly_fee, 0),
+                id
+            ]
+        );
         return res.json({ success: true, message: 'បានកែប្រែកម្រិតសិក្សាជោគជ័យ!' });
-    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+    } catch (err) {
+        console.error('DB Error [PUT /api/grade-levels/:id]:', err);
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message, error: err.sqlMessage || err.message });
+    }
 });
 
 app.delete(['/api/grade-levels/:id', '/grade-levels/:id'], async (req, res) => {
@@ -1766,26 +1974,40 @@ app.get(['/api/classrooms', '/classrooms'], async (req, res) => {
 app.post(['/api/classrooms', '/classrooms'], async (req, res) => {
     const { class_name, grade_level_id, level_type, study_type, shift, room_number, capacity, teacher_name, academic_year } = req.body;
     try {
+        const glId = (grade_level_id && toNum(grade_level_id, 0) > 0) ? toNum(grade_level_id, 0) : null;
         await pool.query(
-            'INSERT INTO classrooms (class_name, grade_level_id, level_type, shift, room_number, capacity, teacher_name, academic_year) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            [clean(class_name) || 'ថ្នាក់រៀន', (grade_level_id && parseInt(grade_level_id, 10) > 0) ? parseInt(grade_level_id, 10) : null, clean(level_type) || clean(study_type) || 'Full-Time', clean(shift) || 'Morning', clean(room_number) || 'Room-01', parseInt(capacity, 10) || 30, clean(teacher_name) || '', clean(academic_year) || '2025-2026']
+            'INSERT INTO classrooms (class_name, grade_level_id, level_type, study_type, shift, room_number, capacity, teacher_name, academic_year) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+                toNull(class_name) || 'ថ្នាក់រៀន',
+                glId,
+                toNull(level_type) || toNull(study_type) || 'Full-Time',
+                toNull(study_type) || toNull(level_type) || 'Full-Time',
+                toNull(shift) || 'Morning',
+                toNull(room_number) || 'Room-01',
+                toNum(capacity, 30),
+                toNull(teacher_name) || '',
+                toNull(academic_year) || '2025-2026'
+            ]
         );
         return res.json({ success: true, message: 'បានបង្កើតបន្ទប់រៀនជោគជ័យ!' });
-    } catch (e) {
-        console.error('SQL Error [POST /api/classrooms]:', e);
-        return res.status(500).json({ success: false, error: e.message });
+    } catch (err) {
+        console.error('DB Error [POST /api/classrooms]:', err);
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message, error: err.sqlMessage || err.message });
     }
 });
 
 app.put(['/api/classrooms/:id', '/classrooms/:id'], async (req, res) => {
-    const id = parseInt(req.params.id, 10);
-    if (!id) return res.status(400).json({ success: false, error: 'Classroom ID មិនត្រឹមត្រូវ!' });
-    const { class_name, grade_level_id, shift, room_number, capacity, teacher_name, academic_year } = req.body;
+    const id = toNum(req.params.id, 0);
+    if (!id) return res.status(400).json({ success: false, message: 'Classroom ID មិនត្រឹមត្រូវ!', error: 'Classroom ID មិនត្រឹមត្រូវ!' });
+    const { class_name, grade_level_id, level_type, study_type, shift, room_number, capacity, teacher_name, academic_year } = req.body;
     try {
+        const glId = (grade_level_id && toNum(grade_level_id, 0) > 0) ? toNum(grade_level_id, 0) : null;
         await pool.query(
             `UPDATE classrooms SET 
                 class_name = ?, 
                 grade_level_id = ?, 
+                level_type = COALESCE(?, level_type),
+                study_type = COALESCE(?, study_type),
                 shift = ?, 
                 room_number = ?, 
                 capacity = ?, 
@@ -1793,20 +2015,22 @@ app.put(['/api/classrooms/:id', '/classrooms/:id'], async (req, res) => {
                 academic_year = ? 
              WHERE id = ?`,
             [
-                safeVal(class_name, 'ថ្នាក់រៀន'),
-                (grade_level_id && parseInt(grade_level_id, 10) > 0) ? parseInt(grade_level_id, 10) : null,
-                safeVal(shift, 'Morning'),
-                safeVal(room_number, 'Room-01'),
-                parseInt(capacity, 10) || 30,
-                safeVal(teacher_name, ''),
-                safeVal(academic_year, '2025-2026'),
+                toNull(class_name) || 'ថ្នាក់រៀន',
+                glId,
+                toNull(level_type),
+                toNull(study_type),
+                toNull(shift) || 'Morning',
+                toNull(room_number) || 'Room-01',
+                toNum(capacity, 30),
+                toNull(teacher_name) || '',
+                toNull(academic_year) || '2025-2026',
                 id
             ]
         );
         return res.json({ success: true, message: 'បានកែប្រែបន្ទប់រៀនជោគជ័យ!' });
-    } catch (e) {
-        console.error('[Error] PUT /api/classrooms/:id:', e);
-        return res.status(500).json({ success: false, error: e.message });
+    } catch (err) {
+        console.error('DB Error [PUT /api/classrooms/:id]:', err);
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message, error: err.sqlMessage || err.message });
     }
 });
 
@@ -1836,19 +2060,39 @@ app.delete('/api/students', async (req, res) => {
 app.post('/api/students/bulk', async (req, res) => {
     const { students } = req.body;
     if (!Array.isArray(students) || students.length === 0) {
-        return res.status(400).json({ success: false, error: 'ទិន្នន័យមិនត្រឹមត្រូវ!' });
+        return res.status(400).json({ success: false, message: 'ទិន្នន័យមិនត្រឹមត្រូវ!', error: 'ទិន្នន័យមិនត្រឹមត្រូវ!' });
     }
     try {
         for (const s of students) {
-            const sCode = (s.student_code || '').trim() || `BLS-${Math.floor(1000 + Math.random() * 9000)}`;
+            const sCode = toNull(s.student_code) || `BLS-${Math.floor(1000 + Math.random() * 9000)}`;
+            const sType = toNull(s.study_type) || 'Full-Time';
+            const cId = (s.classroom_id && toNum(s.classroom_id, 0) > 0) ? toNum(s.classroom_id, 0) : null;
             await pool.query(
                 `INSERT INTO students (student_code, name_kh, name_en, gender, dob, pob, parent_name, parent_phone, study_type, shift, part_time_course, classroom_id, photo_url, status)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
-                [sCode, (s.name_kh || '').trim(), (s.name_en || '').trim(), s.gender || 'Female', fmtDate(s.dob), (s.pob || '').trim(), (s.parent_name || '').trim(), (s.parent_phone || '').trim(), s.study_type || 'Full-Time', s.shift || 'Morning', s.part_time_course || 'None', s.classroom_id || null, s.photo_url || null]
+                [
+                    sCode,
+                    toNull(s.name_kh) || 'សិស្ស',
+                    toNull(s.name_en),
+                    toNull(s.gender) || 'Female',
+                    toDate(s.dob),
+                    toNull(s.pob),
+                    toNull(s.parent_name),
+                    toNull(s.parent_phone),
+                    sType,
+                    toNull(s.shift) || 'Morning',
+                    sType === 'Part-Time' ? (toNull(s.part_time_course) || 'None') : 'None',
+                    cId,
+                    toNull(s.photo_url)
+                ]
             );
         }
+        invalidateMemberCache();
         return res.json({ success: true, message: `បានបញ្ចូលសិស្សចំនួន ${students.length} នាក់ជោគជ័យ!` });
-    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+    } catch (err) {
+        console.error('DB Error [POST /api/students/bulk]:', err);
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message, error: err.sqlMessage || err.message });
+    }
 });
 
 app.delete('/api/teachers', async (req, res) => {
@@ -1901,24 +2145,37 @@ app.get('/api/schedules', async (req, res) => {
 app.post('/api/schedules', async (req, res) => {
     const { classroom_id, teacher_id, subject_name, day_of_week, start_time, end_time, shift } = req.body;
     try {
-        await ensureTables();
+        const cId = (classroom_id && toNum(classroom_id, 0) > 0) ? toNum(classroom_id, 0) : null;
+        const tId = (teacher_id && toNum(teacher_id, 0) > 0) ? toNum(teacher_id, 0) : null;
+        const subj = toNull(subject_name) || 'ចំណេះដឹងទូទៅ';
         await pool.query(
             `INSERT INTO schedules (classroom_id, teacher_id, subject_name, subject, day_of_week, start_time, end_time, shift) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [classroom_id || null, teacher_id || null, subject_name || 'ចំណេះដឹងទូទៅ', subject_name || 'ចំណេះដឹងទូទៅ', day_of_week || 'Mon', start_time || '07:30', end_time || '09:00', shift || 'Morning']
+            [
+                cId,
+                tId,
+                subj,
+                subj,
+                toNull(day_of_week) || 'Mon',
+                toNull(start_time) || '07:30',
+                toNull(end_time) || '09:00',
+                toNull(shift) || 'Morning'
+            ]
         );
         return res.json({ success: true, message: 'បានបង្កើតកាលវិភាគជោគជ័យ!' });
-    } catch (e) {
-        console.error('Schedule creation error:', e.message);
-        return res.status(500).json({ success: false, error: e.message });
+    } catch (err) {
+        console.error('DB Error [POST /api/schedules]:', err);
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message, error: err.sqlMessage || err.message });
     }
 });
 
 app.put('/api/schedules/:id', async (req, res) => {
-    const id = parseInt(req.params.id, 10);
-    if (!id) return res.status(400).json({ success: false, error: 'Schedule ID មិនត្រឹមត្រូវ!' });
+    const id = toNum(req.params.id, 0);
+    if (!id) return res.status(400).json({ success: false, message: 'Schedule ID មិនត្រឹមត្រូវ!', error: 'Schedule ID មិនត្រឹមត្រូវ!' });
     const { classroom_id, teacher_id, subject_name, day_of_week, start_time, end_time, shift } = req.body;
     try {
-        await ensureTables();
+        const cId = (classroom_id && toNum(classroom_id, 0) > 0) ? toNum(classroom_id, 0) : null;
+        const tId = (teacher_id && toNum(teacher_id, 0) > 0) ? toNum(teacher_id, 0) : null;
+        const subj = toNull(subject_name) || 'ចំណេះដឹងទូទៅ';
         await pool.query(
             `UPDATE schedules SET 
                 classroom_id = ?, 
@@ -1931,21 +2188,21 @@ app.put('/api/schedules/:id', async (req, res) => {
                 shift = ? 
              WHERE id = ?`,
             [
-                (classroom_id && parseInt(classroom_id, 10) > 0) ? parseInt(classroom_id, 10) : null,
-                (teacher_id && parseInt(teacher_id, 10) > 0) ? parseInt(teacher_id, 10) : null,
-                safeVal(subject_name, 'ចំណេះដឹងទូទៅ'),
-                safeVal(subject_name, 'ចំណេះដឹងទូទៅ'),
-                safeVal(day_of_week, 'Mon'),
-                safeVal(start_time, '07:30'),
-                safeVal(end_time, '09:00'),
-                safeVal(shift, 'Morning'),
+                cId,
+                tId,
+                subj,
+                subj,
+                toNull(day_of_week) || 'Mon',
+                toNull(start_time) || '07:30',
+                toNull(end_time) || '09:00',
+                toNull(shift) || 'Morning',
                 id
             ]
         );
         return res.json({ success: true, message: 'បានកែប្រែកាលវិភាគជោគជ័យ!' });
-    } catch (e) {
-        console.error('[Error] PUT /api/schedules/:id:', e);
-        return res.status(500).json({ success: false, error: e.message });
+    } catch (err) {
+        console.error('DB Error [PUT /api/schedules/:id]:', err);
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message, error: err.sqlMessage || err.message });
     }
 });
 
@@ -2012,54 +2269,76 @@ app.get('/api/grades/:classroomId', async (req, res) => {
 app.post('/api/grades', async (req, res) => {
     const { student_id, classroom_id, subject_name, month_name, score, remarks } = req.body;
     try {
-        const numScore = parseFloat(score) || 0;
+        const sId = toNum(student_id, 0);
+        if (!sId) {
+            return res.status(400).json({ success: false, message: 'Student ID មិនត្រឹមត្រូវ!', error: 'Student ID មិនត្រឹមត្រូវ!' });
+        }
+        const cId = (classroom_id && toNum(classroom_id, 0) > 0) ? toNum(classroom_id, 0) : null;
+        const numScore = toNum(score, 0);
         const letter = numScore >= 85 ? 'A' : (numScore >= 70 ? 'B' : (numScore >= 50 ? 'C' : 'F'));
+        const subj = toNull(subject_name) || 'ចំណេះដឹងទូទៅ';
+        const month = toNull(month_name) || 'ប្រចាំខែ';
+        const rem = toNull(remarks);
+
         const [existing] = await pool.query(
             'SELECT id FROM student_grades WHERE student_id = ? AND subject_name = ? AND month_name = ? LIMIT 1',
-            [student_id, subject_name || 'ចំណេះដឹងទូទៅ', month_name || 'ប្រចាំខែ']
+            [sId, subj, month]
         );
         if (existing && existing.length > 0) {
             await pool.query(
                 'UPDATE student_grades SET score = ?, grade_letter = ?, remarks = ?, classroom_id = COALESCE(?, classroom_id) WHERE id = ?',
-                [numScore, letter, remarks || '', classroom_id || null, existing[0].id]
+                [numScore, letter, rem, cId, existing[0].id]
             );
         } else {
             await pool.query(
                 'INSERT INTO student_grades (student_id, classroom_id, subject_name, month_name, score, grade_letter, remarks) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                [student_id, classroom_id || null, subject_name || 'ចំណេះដឹងទូទៅ', month_name || 'ប្រចាំខែ', numScore, letter, remarks || '']
+                [sId, cId, subj, month, numScore, letter, rem]
             );
         }
         return res.json({ success: true, message: 'បានរក្សាទុកពិន្ទុជោគជ័យ!' });
-    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+    } catch (err) {
+        console.error('DB Error [POST /api/grades]:', err);
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message, error: err.sqlMessage || err.message });
+    }
 });
 
 app.post('/api/grades/batch', async (req, res) => {
     const { grades } = req.body;
     if (!grades || !Array.isArray(grades)) {
-        return res.status(400).json({ success: false, error: 'ទិន្នន័យពិន្ទុមិនត្រឹមត្រូវ' });
+        return res.status(400).json({ success: false, message: 'ទិន្នន័យពិន្ទុមិនត្រឹមត្រូវ', error: 'ទិន្នន័យពិន្ទុមិនត្រឹមត្រូវ' });
     }
     try {
         for (const item of grades) {
-            const numScore = parseFloat(item.score) || 0;
+            const sId = toNum(item.student_id, 0);
+            if (!sId) continue;
+            const cId = (item.classroom_id && toNum(item.classroom_id, 0) > 0) ? toNum(item.classroom_id, 0) : null;
+            const numScore = toNum(item.score, 0);
             const letter = numScore >= 85 ? 'A' : (numScore >= 70 ? 'B' : (numScore >= 50 ? 'C' : 'F'));
+            const subj = toNull(item.subject_name) || 'ចំណេះដឹងទូទៅ';
+            const month = toNull(item.month_name) || 'ប្រចាំខែ';
+            const rem = toNull(item.remarks);
+
             const [existing] = await pool.query(
                 'SELECT id FROM student_grades WHERE student_id = ? AND subject_name = ? AND month_name = ? LIMIT 1',
-                [item.student_id, item.subject_name || 'ចំណេះដឹងទូទៅ', item.month_name || 'ប្រចាំខែ']
+                [sId, subj, month]
             );
             if (existing && existing.length > 0) {
                 await pool.query(
                     'UPDATE student_grades SET score = ?, grade_letter = ?, remarks = ?, classroom_id = COALESCE(?, classroom_id) WHERE id = ?',
-                    [numScore, letter, item.remarks || '', item.classroom_id || null, existing[0].id]
+                    [numScore, letter, rem, cId, existing[0].id]
                 );
             } else {
                 await pool.query(
                     'INSERT INTO student_grades (student_id, classroom_id, subject_name, month_name, score, grade_letter, remarks) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                    [item.student_id, item.classroom_id || null, item.subject_name || 'ចំណេះដឹងទូទៅ', item.month_name || 'ប្រចាំខែ', numScore, letter, item.remarks || '']
+                    [sId, cId, subj, month, numScore, letter, rem]
                 );
             }
         }
         return res.json({ success: true, message: 'បានរក្សាទុកពិន្ទុទាំងអស់ដោយជោគជ័យ!' });
-    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+    } catch (err) {
+        console.error('DB Error [POST /api/grades/batch]:', err);
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message, error: err.sqlMessage || err.message });
+    }
 });
 
 app.delete('/api/grades/:id', async (req, res) => {
@@ -2505,24 +2784,30 @@ app.get('/api/finance/invoices', getInvoicesForCashier);
 app.post('/api/finance/invoices', async (req, res) => {
     const { student_id, billing_month, original_amount, discount_type, discount_val, due_date } = req.body;
     try {
-        const orig = parseFloat(original_amount) || 0;
-        const discVal = parseFloat(discount_val) || 0;
+        const sId = toNum(student_id, 0);
+        if (!sId) {
+            return res.status(400).json({ success: false, message: 'Student ID មិនត្រឹមត្រូវ!', error: 'Student ID មិនត្រឹមត្រូវ!' });
+        }
+        const orig = toNum(original_amount, 0);
+        const discVal = toNum(discount_val, 0);
         let net = orig;
-        if (discount_type === 'Percentage') {
+        const discType = toNull(discount_type) || 'None';
+        if (discType === 'Percentage') {
             net = orig - (orig * (discVal / 100));
-        } else if (discount_type === 'Fixed') {
+        } else if (discType === 'Fixed') {
             net = Math.max(0, orig - discVal);
         }
         const invoiceNo = 'INV-' + Date.now().toString().slice(-6);
         const [result] = await pool.query(
             `INSERT INTO invoices (invoice_no, student_id, billing_month, original_amount, discount_type, discount_val, net_amount, due_date, status)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
-            [invoiceNo, student_id, billing_month || 'ប្រចាំខែ', orig, discount_type || 'None', discVal, net, due_date || null]
+            [invoiceNo, sId, toNull(billing_month) || 'ប្រចាំខែ', orig, discType, discVal, net, toDate(due_date)]
         );
         logAudit({ action: 'CREATE_INVOICE', tableName: 'invoices', recordId: result.insertId, newValues: { invoiceNo, net }, req });
         return res.json({ success: true, message: 'បានបង្កើតវិក្កយបត្រជោគជ័យ!', invoice_id: result.insertId, invoice_no: invoiceNo });
-    } catch (e) {
-        return res.status(500).json({ success: false, error: e.message });
+    } catch (err) {
+        console.error('DB Error [POST /api/finance/invoices]:', err);
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message, error: err.sqlMessage || err.message });
     }
 });
 
@@ -3055,27 +3340,25 @@ const handleStudentPaymentGet = async (req, res) => {
 const handleStudentPaymentPost = async (req, res) => {
     const { student_id, amount, payment_method, note } = req.body;
     try {
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS student_payments (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                invoice_no VARCHAR(50) NULL,
-                student_id INT NOT NULL,
-                amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-                paid_date DATE NULL,
-                payment_method VARCHAR(50) DEFAULT 'KHQR',
-                note VARCHAR(255) NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        `).catch(() => {});
-
+        const sId = toNum(student_id, 0);
+        if (!sId) {
+            return res.status(400).json({ success: false, message: 'Student ID មិនត្រឹមត្រូវ!', error: 'Student ID មិនត្រឹមត្រូវ!' });
+        }
         const inv = `INV-${Date.now().toString().slice(-6)}`;
-        const today = new Date().toISOString().slice(0, 10);
+        const today = getCambodiaDateStr();
+        const amt = toNum(amount, 0);
+        const pMethod = toNull(payment_method) || 'KHQR';
+        const pNote = toNull(note);
+
         await pool.query(
             'INSERT INTO student_payments (invoice_no, student_id, amount, paid_date, payment_date, payment_method, note, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            [inv, student_id, parseFloat(amount) || 0, today, today, payment_method || 'KHQR', note || '', 'Paid']
+            [inv, sId, amt, today, today, pMethod, pNote, 'Paid']
         );
         return res.json({ success: true, message: 'បានកត់ត្រាការបង់ប្រាក់សិស្សជោគជ័យ!' });
-    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+    } catch (err) {
+        console.error('DB Error [POST student_payments]:', err);
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message, error: err.sqlMessage || err.message });
+    }
 };
 
 app.get(['/api/payments', '/payments', '/api/payments/students', '/payments/students', '/api/finance/student-payments', '/finance/student-payments'], handleStudentPaymentGet);
@@ -3177,34 +3460,27 @@ const handleTeacherSalaryGet = async (req, res) => {
 const handleTeacherSalaryPost = async (req, res) => {
     const { teacher_id, salary_month, for_month, base_salary, amount, bonus, deductions } = req.body;
     try {
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS teacher_salaries (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                pay_slip_no VARCHAR(50) NULL,
-                teacher_id INT NOT NULL,
-                salary_month VARCHAR(50) NULL,
-                base_salary DECIMAL(10,2) DEFAULT 0.00,
-                bonus DECIMAL(10,2) DEFAULT 0.00,
-                deductions DECIMAL(10,2) DEFAULT 0.00,
-                net_salary DECIMAL(10,2) NULL,
-                paid_date DATE NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        `).catch(() => {});
-
+        const tId = toNum(teacher_id, 0);
+        if (!tId) {
+            return res.status(400).json({ success: false, message: 'Teacher ID មិនត្រឹមត្រូវ!', error: 'Teacher ID មិនត្រឹមត្រូវ!' });
+        }
         const slip = `SLIP-${Date.now().toString().slice(-6)}`;
-        const today = new Date().toISOString().slice(0, 10);
-        const m = salary_month || for_month || new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' });
-        const base = parseFloat(base_salary || amount || 0);
-        const b = parseFloat(bonus || 0);
-        const d = parseFloat(deductions || 0);
+        const today = getCambodiaDateStr();
+        const m = toNull(salary_month) || toNull(for_month) || new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' });
+        const base = toNum(base_salary || amount, 0);
+        const b = toNum(bonus, 0);
+        const d = toNum(deductions, 0);
         const net = base + b - d;
+
         await pool.query(
-            'INSERT INTO teacher_salaries (pay_slip_no, teacher_id, salary_month, base_salary, bonus, deductions, net_salary, paid_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            [slip, teacher_id, m, base, b, d, net, today]
+            'INSERT INTO teacher_salaries (pay_slip_no, teacher_id, salary_month, base_salary, bonus, deductions, net_salary, paid_date, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [slip, tId, m, base, b, d, net, today, 'Paid']
         );
         return res.json({ success: true, message: 'បានបើកប្រាក់បៀវត្សរ៍គ្រូជោគជ័យ!' });
-    } catch (e) { return res.status(500).json({ success: false, error: e.message }); }
+    } catch (err) {
+        console.error('DB Error [POST teacher_salaries]:', err);
+        return res.status(500).json({ success: false, message: err.sqlMessage || err.message, error: err.sqlMessage || err.message });
+    }
 };
 
 app.get(['/api/payments/teacher-salaries', '/payments/teacher-salaries', '/api/finance/teacher-salaries', '/finance/teacher-salaries'], handleTeacherSalaryGet);
